@@ -6,16 +6,23 @@ package ntt_pkg;
     // Configuration parameters
     localparam MODULUS              = 3329;
     localparam POLYNOMIAL_LENGTH    = 256;
+    // Kyber base twiddle: 17 is a primitive 256-th root of unity mod 3329 (17^128 = -1).
+    // No 512-th root exists mod 3329, hence the NTT stops at degree-1 pairs (see TOTAL_NUM_STAGES).
+    localparam W_VALUE              = 17;
+    localparam INV_W_VALUE          = 1175;   // 17^-1 mod 3329
 `ifndef NUM_BUTFLY_PER_STAGE
     localparam NUM_BUTFLY_PER_STAGE = 1;
 `else
     localparam NUM_BUTFLY_PER_STAGE = `NUM_BUTFLY_PER_STAGE;
 `endif
     localparam MUL_PIPE_DEPTH       = 1;
+    // The phi pre/post-twist path is unused for Kyber (the incomplete NTT is negacyclic by
+    // construction) and is left instantiated-out in forward_ntt/inverse_ntt.
     localparam PHI_VALUE_POW_1      = 2016;
     localparam INV_PHI_VALUE_POW_1  = 998612;
     // n^{-1} incorporated into inverse-phi init so INTT scaling is free at the end.
-    localparam SCALER               = 1044991;
+    // 7 stages grow the coefficients by 2^7, so this is 128^-1 mod 3329.
+    localparam SCALER               = 3303;
     localparam PHI_HALF_LENGTH      = 128;
     // Extra cycles past MUL_PIPE_DEPTH: butterfly add/sub + modular correction pipeline.
     localparam PIPELINED_MUL_RED_EXTRA = 3;
@@ -24,7 +31,9 @@ package ntt_pkg;
     localparam MODULUS_WIDTH = $clog2(MODULUS);
     localparam [MODULUS_WIDTH-1:0] MODULUS_BIN = MODULUS;
 
-    localparam TOTAL_NUM_STAGES = $clog2(POLYNOMIAL_LENGTH);
+    // Kyber's NTT is incomplete: it stops one layer early, leaving 128 degree-1 polynomials
+    // instead of 256 scalars, so there are log2(N)-1 stages and only 127 distinct twiddles.
+    localparam TOTAL_NUM_STAGES = $clog2(POLYNOMIAL_LENGTH) - 1;
     localparam NUM_COEFS_PER_STAGE = 2*NUM_BUTFLY_PER_STAGE;
 
     localparam PHI_S1_CNT_WIDTH = $clog2(PHI_HALF_LENGTH);
