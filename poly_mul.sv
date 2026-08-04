@@ -17,17 +17,25 @@ forward_ntt u_fwd_ntt_y(input_poly_y, fwd_ntt_res_y, clk, reset_n);
 poly_type point_mul_reseult;
 logic [NUM_COEFS_PER_STAGE-1:0] point_mul_res_valid_per_coef;
 
-// Pointwise product in NTT domain == circular/negacyclic poly multiply after INTT.
+// Product in the NTT domain == negacyclic poly multiply after INTT. Kyber's transform is
+// incomplete, so each "point" is a degree-1 residue rather than a scalar: basemul pairs
+// consecutive beats of a lane, and the two lanes of a quad share a gamma magnitude with
+// the odd lane taking -gamma.
 generate
+    if (NUM_BUTFLY_PER_STAGE != 1) begin: unsupported_parallelism
+        $error("poly_mul: basemul pairs coefficients across beats, which only holds for NUM_BUTFLY_PER_STAGE == 1");
+    end
+
     for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i++) begin: point_muls
-        mod_mul u_mod_mul(
+        basemul u_basemul(
             fwd_ntt_res_x.coefs[gv_i],
             fwd_ntt_res_y.coefs[gv_i],
             point_mul_reseult.coefs[gv_i],
             (fwd_ntt_res_x.valid && fwd_ntt_res_y.valid),
             point_mul_res_valid_per_coef[gv_i],
             clk,
-            reset_n
+            reset_n,
+            (gv_i % 2 == 1)
         );
     end
 endgenerate

@@ -98,8 +98,26 @@ endgenerate
 
 //assign output_poly.valid = &inv_phi_mul_res_valid;
 
+// Kyber needs no phi untwist, but the stages above are unscaled and grow every coefficient
+// by 2^TOTAL_NUM_STAGES, so the n^{-1} half of that path stays as a constant multiply.
+// Restoring the phi path would apply it twice: SCALER is already folded into
+// SCALED_INV_PHI_INIT_VALS.
+logic [NUM_COEFS_PER_STAGE-1:0] scaler_mul_res_valid;
 
-assign output_poly.valid = inv_phi_input_poly.valid;
-assign output_poly.coefs = inv_phi_input_poly.coefs;
+generate
+    for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i++) begin: scaler_muls
+        mod_mul u_scaler_mul(
+            inv_phi_input_poly.coefs[gv_i],
+            MODULUS_WIDTH'(SCALER),
+            output_poly.coefs[gv_i],
+            inv_phi_input_poly.valid,
+            scaler_mul_res_valid[gv_i],
+            clk,
+            reset_n
+        );
+    end
+endgenerate
+
+assign output_poly.valid = &scaler_mul_res_valid;
 
 endmodule
