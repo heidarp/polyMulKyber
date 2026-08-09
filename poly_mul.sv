@@ -42,11 +42,69 @@ endgenerate
 
 assign point_mul_reseult.valid = &point_mul_res_valid_per_coef;
 
+poly_type intt_result;
+
 inverse_ntt u_inverse_ntt(
     point_mul_reseult,
-    output_poly,
+    intt_result,
     clk,
     reset_n
 );
+
+// The INTT butterflies never halve, so each coefficient leaves 2^TOTAL_NUM_STAGES too large.
+// SCALER is n^{-1} mod q, applied here as a constant modular multiply per lane; inverse_ntt
+// itself stays an unnormalized transform. Only ever apply this once along the path -- the
+// SCALER folded into SCALED_INV_PHI_INIT_VALS reaches the datapath through phi_gen, which is
+// instantiated-out for Kyber.
+logic [NUM_COEFS_PER_STAGE-1:0] scaler_mul_res_valid;
+
+generate
+    for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i++) begin: scaler_muls
+        mod_mul u_scaler_mul(
+            intt_result.coefs[gv_i],
+            MODULUS_WIDTH'(SCALER),
+            output_poly.coefs[gv_i],
+            intt_result.valid,
+            scaler_mul_res_valid[gv_i],
+            clk,
+            reset_n
+        );
+    end
+endgenerate
+
+assign output_poly.valid = &scaler_mul_res_valid;
+
+`ifdef NTT_DEBUG_PROBE
+// >>>>>>>>>>>>>>>>>>>> DEBUG PROBE - delete this whole block >>>>>>>>>>>>>>>>>>>>
+// Taps every stage boundary for ntt_debug_probe.sv / check_ntt_stages.py.
+// fntt.stage[k+1] is the output of forward stage k; the last stage drives
+// fwd_ntt_res_* directly. Same shape for the inverse side.
+poly_type [TOTAL_NUM_STAGES-1:0] dbg_fwd_x, dbg_fwd_y, dbg_inv;
+
+generate
+    for (genvar gv_d = 0; gv_d < TOTAL_NUM_STAGES-1; gv_d++) begin: dbg_stage_taps
+        assign dbg_fwd_x[gv_d] = u_fwd_ntt_x.fntt.stage[gv_d+1];
+        assign dbg_fwd_y[gv_d] = u_fwd_ntt_y.fntt.stage[gv_d+1];
+        assign dbg_inv[gv_d]   = u_inverse_ntt.intt.stage[gv_d+1];
+    end
+endgenerate
+
+assign dbg_fwd_x[TOTAL_NUM_STAGES-1] = fwd_ntt_res_x;
+assign dbg_fwd_y[TOTAL_NUM_STAGES-1] = fwd_ntt_res_y;
+assign dbg_inv[TOTAL_NUM_STAGES-1]   = intt_result;
+
+ntt_debug_probe u_ntt_debug_probe(
+    clk,
+    reset_n,
+    input_poly_x,
+    input_poly_y,
+    dbg_fwd_x,
+    dbg_fwd_y,
+    point_mul_reseult,
+    dbg_inv,
+    output_poly
+);
+// <<<<<<<<<<<<<<<<<<<< DEBUG PROBE - delete this whole block <<<<<<<<<<<<<<<<<<<<
+`endif
 
 endmodule

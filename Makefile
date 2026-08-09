@@ -205,6 +205,24 @@ $(RTL_FILELIST): Makefile
 filelist: $(FILELIST) $(RTL_FILELIST)
 	@echo "Wrote $(FILELIST) and $(RTL_FILELIST)"
 
+# >>>>>>>>>>>>>>>>>>>>>>> DEBUG PROBE - delete this block >>>>>>>>>>>>>>>>>>>>>>>
+# make poly_mul DEBUG_PROBE=1  -> compiles ntt_debug_probe.sv and writes
+# ntt_debug_trace.txt, which check_ntt_stages.py reads. Off by default.
+DEBUG_PROBE ?= 0
+
+ifeq ($(DEBUG_PROBE),1)
+TB_FILES   += ntt_debug_probe.sv
+TB_DEFINES += +define+NTT_DEBUG_PROBE
+endif
+
+check_stages:
+	python3 check_ntt_stages.py -t ntt_debug_trace.txt
+
+debug_probe: clean
+	$(MAKE) --no-print-directory poly_mul DEBUG_PROBE=1
+	python3 check_ntt_stages.py -t ntt_debug_trace.txt
+# <<<<<<<<<<<<<<<<<<<<<<< DEBUG PROBE - delete this block <<<<<<<<<<<<<<<<<<<<<<<
+
 # Compilation target with coverage
 compile: $(FILELIST)
 	@echo "=========================================="
@@ -425,6 +443,7 @@ clean:
 	    $(COV_DIR) \
 	    $(COV_REPORT_DIR) \
 	    merged_coverage \
+	    ntt_debug_trace.txt \
 	    $(SPYGLASS_WORK) $(SPYGLASS_PROJECT) $(SPYGLASS_LOG)
 	@echo "Clean complete."
 
@@ -560,5 +579,6 @@ help:
         compile run run_test coverage_report coverage_summary coverage_detail \
         merge_coverage verdi verdi_coverage debug run_debug clean clean_coverage \
         filelist $(FILELIST) $(RTL_FILELIST) \
+        check_stages debug_probe \
         spyglass_prj lint \
         test_coverage_example list env urg_version help

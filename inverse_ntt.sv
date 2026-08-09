@@ -21,7 +21,9 @@ generate
         localparam DELAY_CALC =
             POLYNOMIAL_LENGTH/((2**(TOTAL_NUM_STAGES - gv_i + 1))*NUM_BUTFLY_PER_STAGE);
         localparam STAGE_DELAY_CLOCKS = (DELAY_CALC < 1) ? 1 : DELAY_CALC;
-        localparam ST_NUM_W_CALC = 2**(gv_i);
+        // Stage s undoes forward stage TOTAL_NUM_STAGES-1-s, so it needs that stage's twiddle
+        // count: 64 for the first (distance-2) layer down to 1 for the last (distance-128) one.
+        localparam ST_NUM_W_CALC = 2**(TOTAL_NUM_STAGES-1-gv_i);
         localparam NUM_W_GENS_CALC =
             (ST_NUM_W_CALC < NUM_BUTFLY_PER_STAGE)
             ? ST_NUM_W_CALC
@@ -30,7 +32,7 @@ generate
         if (gv_i == 0) begin: first_inv_ntt_stage
             ntt_stage #(
                 .STAGE_INDEX(gv_i),
-                .ST_NUM_W(2**(gv_i)),
+                .ST_NUM_W(ST_NUM_W_CALC),
                 .DELAY_NUM_CLOCKS(1),
                 .FWD_INV(FWD_INV),
                 .NUM_W_GENS(1),
@@ -98,26 +100,9 @@ endgenerate
 
 //assign output_poly.valid = &inv_phi_mul_res_valid;
 
-// Kyber needs no phi untwist, but the stages above are unscaled and grow every coefficient
-// by 2^TOTAL_NUM_STAGES, so the n^{-1} half of that path stays as a constant multiply.
-// Restoring the phi path would apply it twice: SCALER is already folded into
-// SCALED_INV_PHI_INIT_VALS.
-logic [NUM_COEFS_PER_STAGE-1:0] scaler_mul_res_valid;
-
-generate
-    for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i++) begin: scaler_muls
-        mod_mul u_scaler_mul(
-            inv_phi_input_poly.coefs[gv_i],
-            MODULUS_WIDTH'(SCALER),
-            output_poly.coefs[gv_i],
-            inv_phi_input_poly.valid,
-            scaler_mul_res_valid[gv_i],
-            clk,
-            reset_n
-        );
-    end
-endgenerate
-
-assign output_poly.valid = &scaler_mul_res_valid;
+// Kyber needs no phi untwist, so the last stage passes straight out. The stages above are
+// unscaled and grow every coefficient by 2^TOTAL_NUM_STAGES; the n^{-1} normalization is
+// applied by the SCALER multiply in poly_mul, not here.
+assign output_poly = inv_phi_input_poly;
 
 endmodule

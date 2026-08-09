@@ -99,8 +99,7 @@ generate
         ) u_w_gen(generated_w, generate_new_w, clk, reset_n);
         assign generate_new_w = fifo_cnt_rst;
     end
-    else begin: generate_w_each_clock_starting_from_a_delay
-        // Inverse: twiddles change every valid beat; align start to FIFO fill when delayed.
+    else begin: generate_w_advancing_every_second_fifo_window
         w_gen #(
             .CNT_RST_VALUE(ST_NUM_W),
             .STAGE_INDEX(STAGE_INDEX),
@@ -108,22 +107,33 @@ generate
             .NUM_W_GENS(NUM_W_GENS)
         ) u_inv_w_gen(generated_w, generate_new_w, clk, reset_n);
 
-        if (DPND_FUT_DATA == 0) begin
-            assign generate_new_w = input_poly.valid;
+        // At DELAY_NUM_CLOCKS == 1 the FIFO counter is zero-width, so take the window end
+        // straight off the valid beat.
+        logic w_window_end;
+        assign w_window_end = (DELAY_NUM_CLOCKS == 1) ? input_poly.valid : fifo_cnt_rst;
+
+        // An inverse twiddle covers a whole block, and a block spans two FIFO windows because
+        // a beat carries two coefficients. Advancing every window (as the forward does) would
+        // walk the twiddles twice as fast as the butterflies consume them.
+        logic R_w_adv_phase;
+
+        always @(posedge clk) begin
+            if (reset_n == 1'b0) begin
+                // Pulse on the first window end so twiddle 0 is live for the first block.
+                R_w_adv_phase <= 1'b1;
+            end
+            else if (w_window_end) begin
+                R_w_adv_phase <= ~R_w_adv_phase;
+            end
         end
-        else if (DELAY_NUM_CLOCKS == 1) begin
-            assign generate_new_w = input_poly.valid;
-        end
-        else begin
-            // Start W updates after FIFO has almost filled so butterflies see matching twiddles.
-            assign generate_new_w = R_out_valid_dly[DELAY_NUM_CLOCKS-2];
-        end
+
+        assign generate_new_w = w_window_end & R_w_adv_phase;
     end
 endgenerate
 
 generate
     for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i = gv_i+2) begin: bu_moduls
-        butterfly u_butterfly(
+        butterfly #(.FWD_INV(FWD_INV)) u_butterfly(
             seleced_input_for_butterfly[gv_i],
             seleced_input_for_butterfly[gv_i+1],
             ouput_poly.coefs[gv_i],
