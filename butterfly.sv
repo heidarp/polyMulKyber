@@ -64,7 +64,7 @@ always @(posedge clk) begin
         R_addc1    <= R_add;
 
         // Bring results into [0, q): subtract q if add overflowed, add q if sub went negative.
-        case (R_addc1 > MODULUS_BIN)
+        case (R_addc1 >= MODULUS_BIN)
             1: R_btfly_res_a <= R_sub_mod[MODULUS_WIDTH-1:0];
             default: R_btfly_res_a <= R_addc1[MODULUS_WIDTH-1:0];
         endcase
@@ -89,12 +89,21 @@ reg signed [MODULUS_WIDTH+1:0] R_sub_mod, R_plus_mod, R_add, R_sub, R_subc1, R_a
 reg [MODULUS_WIDTH-1:0]  R_btfly_res_a, R_btfly_res_b;
 
 
-logic [MODULUS_WIDTH+1:0] oprna_sub_oprnd_b;
+logic signed [MODULUS_WIDTH+1:0] oprna_sub_oprnd_b;
 
-assign oprna_sub_oprnd_b  = btfly_oprnd_a - btfly_oprnd_b;
+logic [MODULUS_WIDTH-1:0] oprna_sub_oprnd_b_reduced;
+
+always_comb begin
+    oprna_sub_oprnd_b = btfly_oprnd_a - btfly_oprnd_b;
+    if (oprna_sub_oprnd_b < 0) begin
+        oprna_sub_oprnd_b_reduced = oprna_sub_oprnd_b + MODULUS_BIN;
+    end else begin
+        oprna_sub_oprnd_b_reduced = oprna_sub_oprnd_b[MODULUS_WIDTH-1:0];
+    end
+end
 
 mod_mul u_mod_mul (
-    .oprnd_x      (oprna_sub_oprnd_b),
+    .oprnd_x      (oprna_sub_oprnd_b_reduced),
     .oprnd_y      (twdl_fctr),
     .mul_reduced  (mul_result),
     .input_valid  (1'b1),
@@ -133,7 +142,7 @@ always @(posedge clk) begin
         R_addc1    <= R_add_dly;
 
         // Bring results into [0, q): subtract q if add overflowed, add q if sub went negative.
-        case (R_addc1 > MODULUS_BIN)
+        case (R_addc1 >= MODULUS_BIN)
             1: R_btfly_res_a <= R_sub_mod[MODULUS_WIDTH-1:0];
             default: R_btfly_res_a <= R_addc1[MODULUS_WIDTH-1:0];
         endcase

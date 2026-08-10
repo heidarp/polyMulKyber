@@ -24,14 +24,36 @@ polynomials in the run.  That separates the two failure modes:
     values wrong      -> arithmetic / twiddle bug
     values right,
     mapping unstable  -> ordering / FIFO / valid-alignment bug
-"""
 
-from __future__ import annotations
+Trace values are reduced mod q before compare.  Intermediate taps sometimes
+dump q (3329) where the residue is 0; the final scaler path usually emits 0,
+which is why a stage can look wrong while the end result still passes.
+"""
 
 import argparse
 import os
 import sys
 from collections import Counter, defaultdict
+
+if sys.version_info < (3, 6):
+    sys.exit("check_ntt_stages.py requires Python 3.6 or newer")
+
+
+def modinv(a, m):
+    """a^-1 mod m. Works on Python 3.6+ (pow(..., -1, m) needs 3.8+)."""
+    if sys.version_info >= (3, 8):
+        return pow(a, -1, m)
+    a %= m
+    t, newt = 0, 1
+    r, newr = m, a
+    while newr:
+        q = r // newr
+        t, newt = newt, t - q * newt
+        r, newr = newr, r - q * newr
+    if r != 1:
+        raise ValueError("modinv: not invertible")
+    return t % m
+
 
 # ---------------------------------------------------------------------------
 # Kyber parameters (must match ntt_pkg.sv)
@@ -42,7 +64,13 @@ N = 256
 ROOT = 17           # W_VALUE: primitive 256-th root of unity mod q
 NUM_STAGES = 7      # TOTAL_NUM_STAGES = log2(N) - 1, incomplete NTT
 BRV_BITS = 7        # PHI_S1_CNT_WIDTH
-SCALER = pow(1 << NUM_STAGES, -1, Q)   # 3303 == 128^-1 mod q
+SCALER = modinv(1 << NUM_STAGES, Q)   # 3303 == 128^-1 mod q
+
+
+def normalize_residue(v):
+    """Map RTL dump values into [0, q). Some taps emit q instead of 0."""
+    r = v % Q
+    return r
 
 
 def brv(i: int, bits: int = BRV_BITS) -> int:
@@ -53,7 +81,7 @@ def brv(i: int, bits: int = BRV_BITS) -> int:
 
 
 ZETAS = [pow(ROOT, brv(k), Q) for k in range(1 << BRV_BITS)]
-INV_ZETAS = [pow(z, -1, Q) for z in ZETAS]
+INV_ZETAS = [modinv(z, Q) for z in ZETAS]
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +258,21 @@ class Trace:
             return None
         values = []
         for beat in sorted(per_beat):
-            values.extend(per_beat[beat])
+            values.extend(normalize_residue(v) for v in per_beat[beat])
         return values
+
+    def unreduced_positions(self, tag, poly):
+        """Stream positions where the raw trace value was >= q (typically q itself)."""
+        per_beat = self.beats.get(tag, {}).get(poly)
+        if not per_beat:
+            return []
+        out = []
+        lanes = self.lanes or 1
+        for beat in sorted(per_beat):
+            for lane, v in enumerate(per_beat[beat]):
+                if v >= Q:
+                    out.append((beat, lane, v, normalize_residue(v)))
+        return out
 
     def complete_polys(self, tag):
         """Polynomial indices for which this tag captured a full N values."""
@@ -279,19 +320,76 @@ class StageResult:
         self.detail = ""
         self.perm = None
         self.polys = 0
+        # (poly, beat, lane, got, expected) for the first wrong stream positions
+        self.mismatches = []
 
     @property
     def passed(self):
         return self.status == "PASS"
 
 
-def check_stage(label, captured, references, lanes=2, max_report=4):
+def beat_mismatches_for_poly(cap, ref, lanes, max_rows=10):
+    """First stream positions where cap differs from model expectation."""
+    rows = []
+    if sorted(cap) != sorted(ref):
+        ref_c = Counter(ref)
+        cap_c = Counter(cap)
+        missing = list((ref_c - cap_c).elements())
+        budget = Counter(ref)
+        mi = 0
+        for i, v in enumerate(cap):
+            if budget[v] > 0:
+                budget[v] -= 1
+            else:
+                exp = missing[mi] if mi < len(missing) else "?"
+                mi += 1
+                rows.append((i // lanes, i % lanes, v, exp))
+                if len(rows) >= max_rows:
+                    break
+        return rows
+
+    pos_by_val = defaultdict(set)
+    for i, v in enumerate(ref):
+        pos_by_val[v].add(i)
+    cands = [set(pos_by_val[v]) for v in cap]
+    perm = match_bijection(cands)
+    if perm is None:
+        for i in range(len(cap)):
+            if not cands[i]:
+                rows.append((i // lanes, i % lanes, cap[i], "(ordering conflict)"))
+            elif len(cands[i]) == 1:
+                exp = ref[next(iter(cands[i]))]
+                if cap[i] != exp:
+                    rows.append((i // lanes, i % lanes, cap[i], exp))
+            else:
+                # Ambiguous mapping: compare against smallest candidate index.
+                exp = ref[min(cands[i])]
+                if cap[i] != exp:
+                    rows.append((i // lanes, i % lanes, cap[i], f"{exp}?"))
+            if len(rows) >= max_rows:
+                break
+        return rows
+
+    for i in range(len(cap)):
+        exp = ref[perm[i]]
+        if cap[i] != exp:
+            rows.append((i // lanes, i % lanes, cap[i], exp))
+            if len(rows) >= max_rows:
+                break
+    return rows
+
+
+def check_stage(label, captured, references, lanes=2, max_report=4,
+                unreduced=None, max_mismatches=10):
     """captured/references: parallel lists (one entry per polynomial) of N values."""
     res = StageResult(label)
     res.polys = len(captured)
     if not captured:
         res.detail = "no complete polynomial captured in the trace"
         return res
+
+    if unreduced is None:
+        unreduced = [[] for _ in captured]
 
     # 1. Are the values right at all (ignoring order)?
     for p, (cap, ref) in enumerate(zip(captured, references)):
@@ -308,7 +406,20 @@ def check_stage(label, captured, references, lanes=2, max_report=4):
             res.status = "FAIL"
             res.detail = (f"poly {p}: {len(extra)}/{N} values are not produced by the "
                           f"model" + (f" (e.g. {first})" if first else ""))
+            for beat, lane, got, exp in beat_mismatches_for_poly(
+                    cap, ref, lanes, max_mismatches):
+                res.mismatches.append((p, beat, lane, got, exp))
             return res
+
+    warn = []
+    for p, hits in enumerate(unreduced):
+        for beat, lane, raw, reduced in hits[:max_report]:
+            warn.append(f"poly {p} beat {beat} lane {lane}: raw {raw} -> {reduced}")
+    if warn:
+        note = "unreduced residue(s) in trace, treated as mod q: " + "; ".join(warn)
+        if len(warn) < sum(len(h) for h in unreduced):
+            note += "; ..."
+        res.detail = note
 
     # 2. Values are right -- is the beat -> coefficient mapping one fixed bijection?
     cands = None
@@ -326,20 +437,31 @@ def check_stage(label, captured, references, lanes=2, max_report=4):
         res.detail = (f"values match per-polynomial but no single output order explains "
                       f"all {len(captured)} polynomials (first conflict at beat "
                       f"{i // lanes} lane {i % lanes})")
+        p = 0
+        cap, ref = captured[p], references[p]
+        for beat, lane, got, exp in beat_mismatches_for_poly(
+                cap, ref, lanes, max_mismatches):
+            res.mismatches.append((p, beat, lane, got, exp))
         return res
 
     perm = match_bijection(cands)
     if perm is None:
         res.status = "FAIL"
         res.detail = "no consistent one-to-one beat -> coefficient mapping exists"
+        p = 0
+        cap, ref = captured[p], references[p]
+        for beat, lane, got, exp in beat_mismatches_for_poly(
+                cap, ref, lanes, max_mismatches):
+            res.mismatches.append((p, beat, lane, got, exp))
         return res
 
     res.status = "PASS"
     res.perm = perm
     ambiguous = sum(1 for c in cands if len(c) > 1)
     if ambiguous:
-        res.detail = (f"order not fully pinned down ({ambiguous} positions ambiguous, "
-                      f"repeated values); run more polynomials to disambiguate")
+        amb = (f"order not fully pinned down ({ambiguous} positions ambiguous, "
+               f"repeated values); run more polynomials to disambiguate")
+        res.detail = amb if not res.detail else f"{res.detail}; {amb}"
     return res
 
 
@@ -395,7 +517,35 @@ def reconstruct_inputs(trace, tag, lanes):
     return polys
 
 
-def report_group(title, results, out=sys.stdout):
+def print_mismatch_table(title, result, max_rows=10):
+    """Print got vs expected rows for one failed stage."""
+    if not result.mismatches:
+        return False
+    print(f"  Wrong beats ({title} / {result.label}):")
+    print(f"  {'poly':>4}  {'beat':>4}  {'lane':>4}  {'got':>6}  expected")
+    print(f"  {'----':>4}  {'----':>4}  {'----':>4}  {'----':>6}  --------")
+    for poly, beat, lane, got, expected in result.mismatches[:max_rows]:
+        print(f"  {poly:4d}  {beat:4d}  {lane:4d}  {got:6}  {expected}")
+    if len(result.mismatches) > max_rows:
+        print(f"  ... {len(result.mismatches) - max_rows} more mismatch(es) not shown")
+    return True
+
+
+def print_mismatch_tables(groups, max_rows=10):
+    """Print got vs expected for the first wrong beats of each failed stage."""
+    any_rows = False
+    for title, results in groups:
+        for r in results:
+            if r.status != "FAIL":
+                continue
+            if print_mismatch_table(title, r, max_rows):
+                any_rows = True
+            print()
+    return any_rows
+
+
+def report_group(title, results, out=sys.stdout, max_mismatches=10,
+                 show_mismatch_table=True):
     print(f"\n{title}", file=out)
     print("-" * len(title), file=out)
     for r in results:
@@ -403,6 +553,8 @@ def report_group(title, results, out=sys.stdout):
         if r.detail:
             line += f"   {r.detail}"
         print(line, file=out)
+        if show_mismatch_table and r.status == "FAIL":
+            print_mismatch_table(title, r, max_mismatches)
     ok = all(r.passed for r in results)
     print(f"  => {title}: {'PASSED' if ok else 'FAILED'}", file=out)
     return ok
@@ -417,8 +569,12 @@ def main(argv=None):
                     help="only validate the software model, no trace needed")
     ap.add_argument("--show-map", action="store_true",
                     help="print the discovered beat -> coefficient order per stage")
-    ap.add_argument("--max-polys", type=int, default=0,
-                    help="limit how many polynomials are checked (0 = all)")
+    ap.add_argument("--max-mismatches", type=int, default=10,
+                    help="max wrong beats to tabulate per failed stage (default: 10)")
+    ap.add_argument("--no-mismatch-table", action="store_true",
+                    help="do not print got vs expected tables for failed stages")
+    ap.add_argument("--max-polys", type=int, default=1,
+                    help="limit how many polynomials are checked (0 = all, default: 1)")
     args = ap.parse_args(argv)
 
     print("Kyber NTT multiplier stage checker")
@@ -442,6 +598,23 @@ def main(argv=None):
     lanes = trace.lanes
     print(f"\nTrace: {args.trace}  ({trace.lines} beats, {lanes} coefficients/beat, "
           f"{len(trace.beats)} tapped signals)")
+
+    if lanes is None or trace.lines == 0:
+        print("\nError: trace file has no coefficient data (only headers or empty).\n"
+              "The checker needs at least one valid beat from the probe.\n"
+              "Common causes:\n"
+              "  1. Simulation ended at time 0 ($fatal) before reset was released\n"
+              "     -> read simulation.log for [TB] Failed to open or Expected N decimal values\n"
+              "  2. Ran from the wrong directory (mem_files/x.txt not found)\n"
+              "  3. Built without the probe: make poly_mul DEBUG_PROBE=1\n"
+              "  4. Stale empty trace from a failed run; re-run the simulation\n"
+              "\n"
+              "Look near the end of simulation.log for:\n"
+              "  [ntt_debug_probe] beats captured ...\n"
+              "Every tag should show 128 beats per polynomial (256 coeffs / 2 lanes).\n"
+              "Re-run: make clean && make poly_mul DEBUG_PROBE=1 NUM_POLY=1",
+              file=sys.stderr)
+        return 2
 
     beats_per_poly = N // lanes
     ragged = []
@@ -504,7 +677,9 @@ def main(argv=None):
     def run(tag, label, ref_key, stage=None, alt_key=None):
         polys, captured = gather(tag)
         refs = [pick(p, ref_key, stage) for p in polys]
-        r = check_stage(label, captured, refs, lanes)
+        unreduced = [trace.unreduced_positions(tag, p) for p in polys]
+        r = check_stage(label, captured, refs, lanes, unreduced=unreduced,
+                        max_mismatches=args.max_mismatches)
         if not captured:
             r.detail = r.detail or f"tag {tag!r} missing from the trace"
             return r
@@ -512,7 +687,8 @@ def main(argv=None):
         # the Cooley-Tukey network the RTL's shared butterfly actually builds?
         if r.status == "FAIL" and alt_key:
             alt = check_stage(label, captured, [pick(p, alt_key, stage) for p in polys],
-                              lanes)
+                              lanes, unreduced=unreduced,
+                              max_mismatches=args.max_mismatches)
             if alt.passed:
                 r.detail = ("matches the Cooley-Tukey butterfly the RTL builds, which is "
                             "not the inverse transform (needs Gentleman-Sande)")
@@ -540,8 +716,14 @@ def main(argv=None):
                    [run("out", "scaled output", "out", alt_key="out_ct")]))
 
     overall = True
+    show_tables = not args.no_mismatch_table
     for title, results in groups:
-        overall &= report_group(title, results)
+        overall &= report_group(title, results, max_mismatches=args.max_mismatches,
+                                show_mismatch_table=show_tables)
+
+    print("\n==================================================")
+    print(f"OVERALL: {'PASS' if overall else 'FAIL'}")
+    print("==================================================")
 
     if args.show_map:
         print("\nDiscovered stream order per stage")
@@ -552,9 +734,6 @@ def main(argv=None):
                     where = f"{title} / {r.label}"
                     print(f"  {where:<46} {describe_perm(r.perm, lanes)}")
 
-    print("\n==================================================")
-    print(f"OVERALL: {'PASS' if overall else 'FAIL'}")
-    print("==================================================")
     return 0 if overall else 1
 
 

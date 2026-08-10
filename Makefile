@@ -208,7 +208,9 @@ filelist: $(FILELIST) $(RTL_FILELIST)
 # >>>>>>>>>>>>>>>>>>>>>>> DEBUG PROBE - delete this block >>>>>>>>>>>>>>>>>>>>>>>
 # make poly_mul DEBUG_PROBE=1  -> compiles ntt_debug_probe.sv and writes
 # ntt_debug_trace.txt, which check_ntt_stages.py reads. Off by default.
+# Use NUM_POLY=1 (default for debug_probe) for a single-polynomial trace.
 DEBUG_PROBE ?= 0
+PYTHON ?= python3
 
 ifeq ($(DEBUG_PROBE),1)
 TB_FILES   += ntt_debug_probe.sv
@@ -216,11 +218,11 @@ TB_DEFINES += +define+NTT_DEBUG_PROBE
 endif
 
 check_stages:
-	python3 check_ntt_stages.py -t ntt_debug_trace.txt
+	$(PYTHON) check_ntt_stages.py -t ntt_debug_trace.txt
 
 debug_probe: clean
-	$(MAKE) --no-print-directory poly_mul DEBUG_PROBE=1
-	python3 check_ntt_stages.py -t ntt_debug_trace.txt
+	$(MAKE) --no-print-directory poly_mul DEBUG_PROBE=1 NUM_POLY=1
+	$(PYTHON) check_ntt_stages.py -t ntt_debug_trace.txt
 # <<<<<<<<<<<<<<<<<<<<<<< DEBUG PROBE - delete this block <<<<<<<<<<<<<<<<<<<<<<<
 
 # Compilation target with coverage

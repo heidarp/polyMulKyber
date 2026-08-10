@@ -2,23 +2,9 @@
 
 import ntt_pkg::*;
 
-// Point-wise multiply for Kyber's incomplete NTT. The transform stops one layer early,
-// so a "point" is a degree-1 residue and the product is taken modulo (X^2 - gamma):
-//     c0 = a0*b0 + gamma*a1*b1
-//     c1 = a0*b1 + a1*b0
-// Karatsuba trades the fourth multiplier for two modular subtractions:
-//     c1 = (a0+a1)*(b0+b1) - a0*b0 - a1*b1
-//
-// One coefficient enters per beat, a0 before a1, and the two results leave the same way.
-// The forward NTT emits its stream in quads whose two lanes share a gamma magnitude, the
-// second lane using -gamma (is_negate selects it), so gamma follows exactly the sequence
-// the last forward stage already consumes and the same w_gen produces it. Pairing and
-// gamma order are the ones checked by basemul_pairing_check.py.
-//
-// This is the serial (NUM_BUTFLY_PER_STAGE == 1) arrangement: one instance per lane,
-// pairs formed across consecutive beats.
 module basemul(
     input [MODULUS_WIDTH-1:0] x,y,
+    input [MODULUS_WIDTH-1:0] w,
     output wire [MODULUS_WIDTH-1:0] r,
     input input_valid,
     output output_valid,
@@ -97,29 +83,15 @@ mod_mul u_mod_mul_s01 (sa_reduced, sb_reduced, s01, R_pair_valid, s01_out_valid,
 assign karatsuba_muls_output_valid = p00_out_valid & p11_out_valid & s01_out_valid;
 
 ////////////////////////////////////////////////////////////////////////////////
-// Gamma generation
+// Gamma selection
 ////////////////////////////////////////////////////////////////////////////////
-
-logic  [NUM_BUTFLY_PER_STAGE-1:0] [MODULUS_WIDTH-1:0] generated_w;
-
-logic generate_new_w;
-
-// Advancing on the cycle the products land leaves gamma settled on the next cycle,
-// which is when the gamma multiplier samples it.
-assign generate_new_w = karatsuba_muls_output_valid;
-
-// 64 residue pairs per lane, driven by the twiddles of the last forward stage.
-w_gen #(
-    .CNT_RST_VALUE(2**(TOTAL_NUM_STAGES-1)),
-    .STAGE_INDEX(TOTAL_NUM_STAGES-1),
-    .FWD_INV(0),
-    .NUM_W_GENS(1)
-) u_w_gen(generated_w, generate_new_w, clk, reset_n);
 
 logic [MODULUS_WIDTH-1:0] gamma;
 
+// w is driven by the shared generator in poly_mul and must be settled on the cycle
+// R_kara_valid is high, which is when the gamma multiplier samples it.
 // The odd lane of every quad needs -gamma; q - gamma still fits in MODULUS_WIDTH.
-assign gamma = is_negate ? MODULUS_WIDTH'(MODULUS - generated_w[0]) : generated_w[0];
+assign gamma = is_negate ? MODULUS_WIDTH'(MODULUS - w) : w;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Recombination
