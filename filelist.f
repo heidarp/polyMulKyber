@@ -9,6 +9,7 @@ ntt_stage.sv
 forward_ntt.sv
 inverse_ntt.sv
 basemul.sv
+point_mul.sv
 poly_mul.sv
 phi_calc.sv
 phi_gen.sv

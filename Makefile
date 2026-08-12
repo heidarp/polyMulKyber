@@ -44,7 +44,7 @@ NUM_BUTFLY_PER_STAGE ?= 1
 TB_DEFINES = +define+NUM_POLY=$(NUM_POLY) +define+WAIT_MIN=$(WAIT_MIN) +define+WAIT_MAX=$(WAIT_MAX) \
              +define+NUM_BUTFLY_PER_STAGE=$(NUM_BUTFLY_PER_STAGE)
 
-# RTL sources (SpyGlass lint). Packages and leaf modules first; basemul before poly_mul.
+# RTL sources (SpyGlass lint). Packages and leaf modules first; basemul before point_mul before poly_mul.
 RTL_FILES = \
     ntt_pkg.sv \
     modulus_funcs.sv \
@@ -56,6 +56,7 @@ RTL_FILES = \
     forward_ntt.sv \
     inverse_ntt.sv \
     basemul.sv \
+    point_mul.sv \
     poly_mul.sv \
     phi_calc.sv \
     phi_gen.sv
@@ -119,15 +120,15 @@ poly_mul_rand_verdi_rc:
 	    exit 1; \
 	fi
 
-# Sanity: basemul pairs coefficients across beats (NUM_BUTFLY_PER_STAGE == 1 only).
+# Sanity: poly_mul_rand + reference check across supported parallelism levels.
 SANITY_NUM_POLY = 6
 SANITY_WAIT_MIN = 0
 SANITY_WAIT_MAX = 3
-SANITY_BUTFLIES = 1
+SANITY_BUTFLIES = 1 2 4 8
 
 sanity:
 	@echo "=========================================="
-	@echo "Sanity: poly_mul_rand (NUM_BUTFLY_PER_STAGE=$(SANITY_BUTFLIES) only; basemul is serial)"
+	@echo "Sanity: poly_mul_rand for NUM_BUTFLY_PER_STAGE in ($(SANITY_BUTFLIES))"
 	@echo "  NUM_POLY=$(SANITY_NUM_POLY) WAIT_MIN=$(SANITY_WAIT_MIN) WAIT_MAX=$(SANITY_WAIT_MAX)"
 	@echo "=========================================="
 	@fail=0; \
@@ -551,7 +552,7 @@ help:
 	@echo "  make poly_mul_rand NUM_POLY=8 WAIT_MAX=5"
 	@echo "  make poly_mul_rand_verdi_rc  : open Verdi with debug wave groups"
 	@echo ""
-	@echo "sanity (poly_mul_rand + reference check, NUM_BUTFLY_PER_STAGE=1):"
+	@echo "sanity (poly_mul_rand + reference check, NUM_BUTFLY_PER_STAGE=1,2,4,8):"
 	@echo "  make sanity                : NUM_POLY=6; WAIT_MIN=0; WAIT_MAX=3"
 	@echo ""
 	@echo "forward_ntt testbench (legacy):"

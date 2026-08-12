@@ -15,70 +15,8 @@ forward_ntt u_fwd_ntt_x(input_poly_x, fwd_ntt_res_x, clk, reset_n);
 forward_ntt u_fwd_ntt_y(input_poly_y, fwd_ntt_res_y, clk, reset_n);
 
 poly_type point_mul_reseult;
-logic [NUM_COEFS_PER_STAGE-1:0] point_mul_res_valid_per_coef;
 
-// Product in the NTT domain == negacyclic poly multiply after INTT. Kyber's transform is
-// incomplete, so each "point" is a degree-1 residue rather than a scalar: basemul pairs
-// consecutive beats of a lane, and the two lanes of a quad share a gamma magnitude with
-// the odd lane taking -gamma.
-// basemul consumes a0 then a1 on consecutive valid beats, so a gamma is needed once per
-// pair, not once per beat. Every lane opens its pairs on the same beat, so one generator
-// feeds them all and each lane negates locally. The pulse is delayed until that pair's
-// Karatsuba products land inside basemul, which leaves gamma settled on the next cycle,
-// when the gamma multiplier samples it.
-logic point_mul_input_valid;
-assign point_mul_input_valid = fwd_ntt_res_x.valid && fwd_ntt_res_y.valid;
-
-logic R_pair_phase;
-logic [PIPELINED_MUL_RED_EXTRA-1:0] R_w_adv_dly;
-
-always @(posedge clk) begin
-    if (reset_n == 1'b0) begin
-        R_pair_phase <= 1'b0;
-        R_w_adv_dly  <= '0;
-    end
-    else begin
-        if (point_mul_input_valid) begin
-            R_pair_phase <= ~R_pair_phase;
-        end
-        R_w_adv_dly[0] <= point_mul_input_valid & ~R_pair_phase;
-        for (int i = 0; i < PIPELINED_MUL_RED_EXTRA-1; i++) begin
-            R_w_adv_dly[i+1] <= R_w_adv_dly[i];
-        end
-    end
-end
-
-logic [NUM_BUTFLY_PER_STAGE-1:0] [MODULUS_WIDTH-1:0] point_mul_w;
-
-// 64 residue pairs per lane, driven by the twiddles of the last forward stage.
-w_gen #(
-    .CNT_RST_VALUE(2**(TOTAL_NUM_STAGES-1)),
-    .STAGE_INDEX(TOTAL_NUM_STAGES-1),
-    .FWD_INV(0),
-    .NUM_W_GENS(1)
-) u_point_mul_w_gen(point_mul_w, R_w_adv_dly[PIPELINED_MUL_RED_EXTRA-1], clk, reset_n);
-
-generate
-//    if (NUM_BUTFLY_PER_STAGE != 1) begin: unsupported_parallelism
-//        $error("poly_mul: basemul pairs coefficients across beats, which only holds for NUM_BUTFLY_PER_STAGE == 1");
-//    end
-
-    for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i++) begin: point_muls
-        basemul u_basemul(
-            fwd_ntt_res_x.coefs[gv_i],
-            fwd_ntt_res_y.coefs[gv_i],
-            point_mul_w[0],
-            point_mul_reseult.coefs[gv_i],
-            point_mul_input_valid,
-            point_mul_res_valid_per_coef[gv_i],
-            clk,
-            reset_n,
-            (gv_i % 2 == 1)
-        );
-    end
-endgenerate
-
-assign point_mul_reseult.valid = &point_mul_res_valid_per_coef;
+point_mul u_point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
 
 poly_type intt_result;
 
