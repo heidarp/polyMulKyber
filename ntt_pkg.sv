@@ -44,6 +44,12 @@ package ntt_pkg;
         logic [NUM_BUTFLY_PER_STAGE*2-1:0] [MODULUS_WIDTH-1:0] coefs;
         logic                              valid;
     } poly_type;
+    
+    typedef struct packed {
+        logic [1:0] [MODULUS_WIDTH-1:0]    coefs;
+        logic                              valid;
+    } basemul_poly_type;
+    
 
     typedef struct packed {
         poly_type [TOTAL_NUM_STAGES-1:0] stage;
@@ -83,13 +89,13 @@ package ntt_pkg;
             inv_threshold_stage = 1;
         end
         else if (NUM_BUTFLY_PER_STAGE == 2) begin
-            inv_threshold_stage = 2;
+            inv_threshold_stage = 1;
         end
         else if (NUM_BUTFLY_PER_STAGE == 4) begin
-            inv_threshold_stage = 3;
+            inv_threshold_stage = 2;
         end
         else if (NUM_BUTFLY_PER_STAGE == 8) begin
-            inv_threshold_stage = 4;
+            inv_threshold_stage = 3;
         end
         else begin
             inv_threshold_stage = 8;

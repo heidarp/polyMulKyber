@@ -1,0 +1,4 @@
+ssh-keygen -t ed25519
+ssh-copy-id -p 48822 v53392@130.15.52.59
+
+rsync -avz -e "ssh -p 48822" /home/elechi/Desktop/tmp/fixed/polyMulKyber/ v53392@130.15.52.59:/home/v53392/mydata/polyMulKyber

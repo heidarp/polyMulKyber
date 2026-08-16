@@ -9,11 +9,9 @@ import ntt_pkg::*;
 // parent serialises them across two beats; for larger parallelism both lanes
 // are already available in the same beat and no serialiser is needed.
 module basemul(
-    input  [1:0] [MODULUS_WIDTH-1:0] fifo_x, fifo_y,
+    input  basemul_poly_type           pair_x, pair_y,
     input  [MODULUS_WIDTH-1:0]       w,
-    output wire [MODULUS_WIDTH-1:0]  r0, r1,
-    input  input_valid,
-    output output_valid,
+    output basemul_poly_type           result,
     input  clk, reset_n, is_negate
 );
 
@@ -23,7 +21,7 @@ module basemul(
 
 // Pair is assembled in point_mul; input_valid means the pair is ready.
 logic R_pair_valid;
-assign R_pair_valid = input_valid;
+assign R_pair_valid = pair_x.valid;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Karatsuba products
@@ -35,8 +33,8 @@ logic [MODULUS_WIDTH-1:0] sa_reduced, sb_reduced;
 // The operand sums must re-enter [0, q) before the multiply: mod_mul only reduces
 // products of two residues.
 always_comb begin
-    sa = fifo_x[0] + fifo_x[1];
-    sb = fifo_y[0] + fifo_y[1];
+    sa = pair_x.coefs[0] + pair_x.coefs[1];
+    sb = pair_y.coefs[0] + pair_y.coefs[1];
 
     if (sa >= MODULUS) begin
         sa_reduced = MODULUS_WIDTH'(sa - MODULUS);
@@ -60,8 +58,8 @@ logic s01_out_valid;
 
 logic karatsuba_muls_output_valid;
 
-mod_mul u_mod_mul_p00 (fifo_x[1], fifo_y[1], p00, R_pair_valid, p00_out_valid, clk, reset_n);
-mod_mul u_mod_mul_p11 (fifo_x[0], fifo_y[0], p11, R_pair_valid, p11_out_valid, clk, reset_n);
+mod_mul u_mod_mul_p00 (pair_x.coefs[1], pair_y.coefs[1], p00, R_pair_valid, p00_out_valid, clk, reset_n);
+mod_mul u_mod_mul_p11 (pair_x.coefs[0], pair_y.coefs[0], p11, R_pair_valid, p11_out_valid, clk, reset_n);
 mod_mul u_mod_mul_s01 (sa_reduced, sb_reduced, s01, R_pair_valid, s01_out_valid, clk, reset_n);
 
 assign karatsuba_muls_output_valid = p00_out_valid & p11_out_valid & s01_out_valid;
@@ -165,8 +163,8 @@ always @(posedge clk) begin
     end
 end
 
-assign output_valid = R_res_valid;
-assign r0 = R_c0;
-assign r1 = R_c1_dly;
+assign result.valid     = R_res_valid;
+assign result.coefs[0]  = R_c0;
+assign result.coefs[1]  = R_c1_dly;
 
 endmodule

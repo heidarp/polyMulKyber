@@ -24,10 +24,14 @@ generate
         // Stage s undoes forward stage TOTAL_NUM_STAGES-1-s, so it needs that stage's twiddle
         // count: 64 for the first (distance-2) layer down to 1 for the last (distance-128) one.
         localparam ST_NUM_W_CALC = 2**(TOTAL_NUM_STAGES-1-gv_i);
-        localparam NUM_W_GENS_CALC =
-            (ST_NUM_W_CALC < NUM_BUTFLY_PER_STAGE)
-            ? ST_NUM_W_CALC
-            : NUM_BUTFLY_PER_STAGE;
+          
+          localparam NUM_W_GENS_CALC =
+            ((2**(TOTAL_NUM_STAGES-gv_i + $clog2(NUM_BUTFLY_PER_STAGE) ) / POLYNOMIAL_LENGTH) < 1)
+            ? 1
+            : (2**(TOTAL_NUM_STAGES-gv_i + $clog2(NUM_BUTFLY_PER_STAGE) ) / POLYNOMIAL_LENGTH);          
+            
+            
+            
 
         if (gv_i == 0) begin: first_inv_ntt_stage
             ntt_stage #(
@@ -35,7 +39,7 @@ generate
                 .ST_NUM_W(ST_NUM_W_CALC),
                 .DELAY_NUM_CLOCKS(1),
                 .FWD_INV(FWD_INV),
-                .NUM_W_GENS(1),
+                .NUM_W_GENS(NUM_W_GENS_CALC),
                 .DPND_FUT_DATA(inv_calc_dpnd_fut_data(gv_i))
             ) u_ntt_stage (
                 intt.stage[gv_i],

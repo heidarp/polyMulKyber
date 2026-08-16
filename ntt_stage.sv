@@ -127,7 +127,13 @@ generate
             end
         end
 
-        assign generate_new_w = w_window_end & R_w_adv_phase;
+        if (STAGE_INDEX==0 && NUM_BUTFLY_PER_STAGE!=1) begin
+            assign generate_new_w = w_window_end ;
+        end
+        else begin
+            assign generate_new_w = w_window_end & R_w_adv_phase;
+        end
+        
     end
 endgenerate
 

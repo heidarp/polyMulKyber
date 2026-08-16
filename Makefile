@@ -221,7 +221,7 @@ endif
 check_stages:
 	$(PYTHON) check_ntt_stages.py -t ntt_debug_trace.txt
 
-debug_probe: clean
+debug_probe: 
 	$(MAKE) --no-print-directory poly_mul DEBUG_PROBE=1 NUM_POLY=1
 	$(PYTHON) check_ntt_stages.py -t ntt_debug_trace.txt
 # <<<<<<<<<<<<<<<<<<<<<<< DEBUG PROBE - delete this block <<<<<<<<<<<<<<<<<<<<<<<
