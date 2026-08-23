@@ -27,7 +27,7 @@ localparam CNT_WIDTH = $clog2(DELAY_NUM_CLOCKS);
 // Coefficient span between butterfly partners when this stage only reorders (no fut-data mux).
 localparam int NEXT_COEF_LOC_NO_DPND =
     (FWD_INV == 0) ? (POLYNOMIAL_LENGTH / ST_NUM_W)
-                   : ((ST_NUM_W < NUM_COEFS_PER_STAGE) ? ST_NUM_W : 0);
+                   : (STAGE_INDEX==0 ? 0 :(2**(STAGE_INDEX + 1)));
 
 typedef struct packed {
     logic [DELAY_NUM_CLOCKS-1:0] [MODULUS_WIDTH-1:0] in_fifo;
@@ -111,7 +111,7 @@ generate
         // straight off the valid beat.
         logic w_window_end;
         assign w_window_end = (DELAY_NUM_CLOCKS == 1) ? input_poly.valid : fifo_cnt_rst;
-
+            //assign generate_new_w = (DELAY_NUM_CLOCKS == 1) ? input_poly.valid : fifo_cnt_rst;
         // An inverse twiddle covers a whole block, and a block spans two FIFO windows because
         // a beat carries two coefficients. Advancing every window (as the forward does) would
         // walk the twiddles twice as fast as the butterflies consume them.
@@ -127,13 +127,16 @@ generate
             end
         end
 
-        if (STAGE_INDEX==0 && NUM_BUTFLY_PER_STAGE!=1) begin
+        if ((STAGE_INDEX==0 && NUM_BUTFLY_PER_STAGE>1)
+        ||(STAGE_INDEX==1 && NUM_BUTFLY_PER_STAGE>2)
+        || (STAGE_INDEX==2 && NUM_BUTFLY_PER_STAGE>4) )
+         begin
             assign generate_new_w = w_window_end ;
         end
         else begin
             assign generate_new_w = w_window_end & R_w_adv_phase;
         end
-        
+      
     end
 endgenerate
 

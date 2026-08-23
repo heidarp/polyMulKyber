@@ -19,7 +19,7 @@ generate
     for (genvar gv_i = 0; gv_i < TOTAL_NUM_STAGES; gv_i++) begin: inv_ntt_stage
         // Inverse stage order: delay grows toward the end (mirror of forward shrink).
         localparam DELAY_CALC =
-            POLYNOMIAL_LENGTH/((2**(TOTAL_NUM_STAGES - gv_i + 1))*NUM_BUTFLY_PER_STAGE);
+            POLYNOMIAL_LENGTH/((2**(TOTAL_NUM_STAGES - gv_i +1 ))*NUM_BUTFLY_PER_STAGE);
         localparam STAGE_DELAY_CLOCKS = (DELAY_CALC < 1) ? 1 : DELAY_CALC;
         // Stage s undoes forward stage TOTAL_NUM_STAGES-1-s, so it needs that stage's twiddle
         // count: 64 for the first (distance-2) layer down to 1 for the last (distance-128) one.
@@ -37,7 +37,7 @@ generate
             ntt_stage #(
                 .STAGE_INDEX(gv_i),
                 .ST_NUM_W(ST_NUM_W_CALC),
-                .DELAY_NUM_CLOCKS(1),
+                .DELAY_NUM_CLOCKS(STAGE_DELAY_CLOCKS),
                 .FWD_INV(FWD_INV),
                 .NUM_W_GENS(NUM_W_GENS_CALC),
                 .DPND_FUT_DATA(inv_calc_dpnd_fut_data(gv_i))

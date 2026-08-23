@@ -83,11 +83,21 @@ generate
         end
         else begin
             // Inverse: stride mapping — twiddle bf goes to butterflies bf, bf+NUM_W_GENS, ...
-            for (genvar bf = 0; bf < NUM_W_GENS; bf++) begin : multiple_generated_ws_fwd
-                for (genvar w_i = bf; w_i < NUM_BUTFLY_PER_STAGE; w_i += NUM_W_GENS) begin : stride_generated_ws
-                    assign generated_w[w_i] = comb_w_calc[bf];
-                end
-            end
+//            for (genvar bf = 0; bf < NUM_W_GENS; bf++) begin : multiple_generated_ws_fwd
+//                for (genvar w_i = bf; w_i < NUM_BUTFLY_PER_STAGE; w_i ++) begin : stride_generated_ws
+//                    assign generated_w[w_i] = comb_w_calc[bf];
+//                end
+//            end
+
+
+
+for (genvar w_i = 0; w_i < NUM_BUTFLY_PER_STAGE; w_i++) begin : stride_generated_ws
+    assign generated_w[w_i] = comb_w_calc[w_i * NUM_W_GENS / NUM_BUTFLY_PER_STAGE];
+    end
+
+
+
+
         end
     end
 endgenerate
