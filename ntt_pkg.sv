@@ -158,7 +158,7 @@ package ntt_pkg;
         end
         mod_pow = result;
     endfunction : mod_pow
-
+/*
     // Interleaved phi exponents across streaming lanes:
     // even i -> phi^(i/2), odd i -> phi^(N/2 + (i-1)/2) for negative-wrapped residues.
     function int phi_lane_exponent(input int i);
@@ -241,7 +241,7 @@ package ntt_pkg;
 
     localparam [NUM_COEFS_PER_STAGE-1:0] [MODULUS_WIDTH-1:0] SCALED_INV_PHI_INIT_VALS_ADVANNCED =
         inv_phi_init_values_advanced();
-
+*/
     localparam PHI_S1_DELAY_NUM_CLOCKS = POLYNOMIAL_LENGTH/2 - NUM_COEFS_PER_STAGE/2;
 
 endpackage

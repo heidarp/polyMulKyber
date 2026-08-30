@@ -21,7 +21,7 @@ module basemul(
 
 // Pair is assembled in point_mul; input_valid means the pair is ready.
 logic R_pair_valid;
-assign R_pair_valid = pair_x.valid;
+assign R_pair_valid = pair_x.valid && pair_y.valid;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Karatsuba products

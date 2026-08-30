@@ -16,7 +16,7 @@ generate
 if (FWD_INV == 0) begin : ct_butterfly
 
 wire [MODULUS_WIDTH-1:0] mul_result;
-wire                     mod_mul_output_valid_unused;
+wire                     mod_mul_output_valid_UNUSED;
 
 // Signed wide ops so add/sub can overshoot [0, q) before correction.
 reg signed [MODULUS_WIDTH+1:0] R_sub_mod, R_plus_mod, R_add, R_sub, R_subc1, R_addc1;
@@ -29,7 +29,7 @@ mod_mul u_mod_mul (
     .oprnd_y      (twdl_fctr),
     .mul_reduced  (mul_result),
     .input_valid  (1'b1),
-    .output_valid (mod_mul_output_valid_unused),
+    .output_valid (mod_mul_output_valid_UNUSED),
     .clk          (clk),
     .reset        (reset_n)
 );
@@ -82,7 +82,7 @@ end
 else begin : gs_butterfly
 
 wire [MODULUS_WIDTH-1:0] mul_result;
-wire                     mod_mul_output_valid_unused;
+wire                     mod_mul_output_valid_UNUSED;
 
 // Signed wide ops so add/sub can overshoot [0, q) before correction.
 reg signed [MODULUS_WIDTH+1:0] R_sub_mod, R_plus_mod, R_add, R_sub, R_subc1, R_addc1,R_add_dly;
@@ -107,7 +107,7 @@ mod_mul u_mod_mul (
     .oprnd_y      (twdl_fctr),
     .mul_reduced  (mul_result),
     .input_valid  (1'b1),
-    .output_valid (mod_mul_output_valid_unused),
+    .output_valid (mod_mul_output_valid_UNUSED),
     .clk          (clk),
     .reset        (reset_n)
 );

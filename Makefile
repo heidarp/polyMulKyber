@@ -58,8 +58,7 @@ RTL_FILES = \
     basemul.sv \
     point_mul.sv \
     poly_mul.sv \
-    phi_calc.sv \
-    phi_gen.sv
+    scaler_mod.sv 
 
 # Testbenches (not linted as top-level RTL)
 TB_FILES = \

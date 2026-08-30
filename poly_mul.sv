@@ -36,9 +36,8 @@ logic [NUM_COEFS_PER_STAGE-1:0] scaler_mul_res_valid;
 
 generate
     for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i++) begin: scaler_muls
-        mod_mul u_scaler_mul(
+        scaler_mod u_scaler_mul(
             intt_result.coefs[gv_i],
-            MODULUS_WIDTH'(SCALER),
             output_poly.coefs[gv_i],
             intt_result.valid,
             scaler_mul_res_valid[gv_i],

@@ -44,8 +44,10 @@ if (NUM_BUTFLY_PER_STAGE == 1) begin : serial_pairs
 
     always @(posedge clk) begin
         if (reset_n == 1'b0) begin
-            fifo_x       <= '0;
-            fifo_y       <= '0;
+            for (int i = 0; i < NUM_COEFS_PER_STAGE; i++) begin
+                fifo_x[i].coefs      <= '0;
+                fifo_y[i].coefs    <= '0;
+            end
             R_pair_phase <= 1'b0;
             R_pair_valid <= 1'b0;
         end
@@ -116,6 +118,16 @@ if (NUM_BUTFLY_PER_STAGE == 1) begin : serial_pairs
             (gv_i % 2 == 1)
         );
     end
+logic [NUM_COEFS_PER_STAGE-1:0] basemul_valid_vec;
+logic base_multiplication_results_valid;
+always_comb begin
+    for (int i = 0; i < NUM_COEFS_PER_STAGE; i++) begin
+        basemul_valid_vec[i] = basemul_result[i].valid;
+    end
+    
+end
+
+assign base_multiplication_results_valid = &basemul_valid_vec;
 
     always @(posedge clk) begin
         if (reset_n == 1'b0) begin
@@ -124,22 +136,22 @@ if (NUM_BUTFLY_PER_STAGE == 1) begin : serial_pairs
         end
         else begin
             // Pairs are two beats apart, so the two result flags never overlap.
-            if (basemul_result[0].valid) begin
+            if (base_multiplication_results_valid ) begin
                 for (int i = 0; i < NUM_COEFS_PER_STAGE; i++) begin
                     R_r1_hold[i] <= basemul_result[i].coefs[1];
                 end
             end
-            R_ser_phase <= basemul_result[0].valid;
+            R_ser_phase <= base_multiplication_results_valid;
         end
     end
 
     always_comb begin
         for (int i = 0; i < NUM_COEFS_PER_STAGE; i++) begin
-            point_mul_reseult.coefs[i] = basemul_result[0].valid ? basemul_result[i].coefs[0] : R_r1_hold[i];
+            point_mul_reseult.coefs[i] = base_multiplication_results_valid? basemul_result[i].coefs[0] : R_r1_hold[i];
         end
     end
 
-    assign point_mul_reseult.valid = basemul_result[0].valid | R_ser_phase;
+    assign point_mul_reseult.valid = base_multiplication_results_valid | R_ser_phase;
 
 end
 else begin : parallel_pairs
