@@ -14,7 +14,7 @@ VCS_OPTS = -full64 -sverilog +v2k \
            +vpi \
            -kdb \
            -debug_region+cell+encrypt \
-           +incdir+.
+           +incdir+rtl +incdir+testbench +incdir+.
 
 # Coverage options
 COVERAGE_OPTS = \
@@ -44,28 +44,33 @@ NUM_BUTFLY_PER_STAGE ?= 1
 TB_DEFINES = +define+NUM_POLY=$(NUM_POLY) +define+WAIT_MIN=$(WAIT_MIN) +define+WAIT_MAX=$(WAIT_MAX) \
              +define+NUM_BUTFLY_PER_STAGE=$(NUM_BUTFLY_PER_STAGE)
 
+# Source directories
+RTL_DIR = rtl
+TB_DIR = testbench
+PYTHON_DIR = python
+
 # RTL sources (SpyGlass lint). Packages and leaf modules first; basemul before point_mul before poly_mul.
 RTL_FILES = \
-    ntt_pkg.sv \
-    modulus_funcs.sv \
-    mod_mul.sv \
-    w_calc.sv \
-    w_gen.sv \
-    butterfly.sv \
-    ntt_stage.sv \
-    forward_ntt.sv \
-    inverse_ntt.sv \
-    basemul.sv \
-    point_mul.sv \
-    poly_mul.sv \
-    scaler_mod.sv 
+    $(RTL_DIR)/ntt_pkg.sv \
+    $(RTL_DIR)/modulus_funcs.sv \
+    $(RTL_DIR)/mod_mul.sv \
+    $(RTL_DIR)/w_calc.sv \
+    $(RTL_DIR)/w_gen.sv \
+    $(RTL_DIR)/butterfly.sv \
+    $(RTL_DIR)/ntt_stage.sv \
+    $(RTL_DIR)/forward_ntt.sv \
+    $(RTL_DIR)/inverse_ntt.sv \
+    $(RTL_DIR)/basemul.sv \
+    $(RTL_DIR)/point_mul.sv \
+    $(RTL_DIR)/poly_mul.sv \
+    $(RTL_DIR)/scaler_mod.sv
 
 # Testbenches (not linted as top-level RTL)
 TB_FILES = \
-    nttg_tb.sv \
-    tb_poly_mul.sv \
-    tb_poly_mul_rand.sv \
-    tb_fwd_ntt.sv
+    $(TB_DIR)/nttg_tb.sv \
+    $(TB_DIR)/tb_poly_mul.sv \
+    $(TB_DIR)/tb_poly_mul_rand.sv \
+    $(TB_DIR)/tb_fwd_ntt.sv
 
 # Simulation sources (RTL + testbenches)
 FILES = $(RTL_FILES) $(TB_FILES)
@@ -213,16 +218,18 @@ DEBUG_PROBE ?= 0
 PYTHON ?= python3
 
 ifeq ($(DEBUG_PROBE),1)
-TB_FILES   += ntt_debug_probe.sv
+TB_FILES   += $(TB_DIR)/ntt_debug_probe.sv
 TB_DEFINES += +define+NTT_DEBUG_PROBE
 endif
 
+CHECK_STAGES = $(PYTHON_DIR)/check_ntt_stages.py
+
 check_stages:
-	$(PYTHON) check_ntt_stages.py -t ntt_debug_trace.txt
+	$(PYTHON) $(CHECK_STAGES) -t ntt_debug_trace.txt
 
 debug_probe: 
 	$(MAKE) --no-print-directory poly_mul DEBUG_PROBE=1 NUM_POLY=1
-	$(PYTHON) check_ntt_stages.py -t ntt_debug_trace.txt
+	$(PYTHON) $(CHECK_STAGES) -t ntt_debug_trace.txt
 # <<<<<<<<<<<<<<<<<<<<<<< DEBUG PROBE - delete this block <<<<<<<<<<<<<<<<<<<<<<<
 
 # Compilation target with coverage
@@ -234,7 +241,7 @@ compile: $(FILELIST)
 	@echo "Top module: $(TOP)"
 	@echo "File list:  $(FILELIST) (includes basemul.sv)"
 	@echo "TB params: NUM_POLY=$(NUM_POLY) WAIT_MIN=$(WAIT_MIN) WAIT_MAX=$(WAIT_MAX) NUM_BUTFLY_PER_STAGE=$(NUM_BUTFLY_PER_STAGE)"
-	@grep -q '^basemul\.sv$$' $(FILELIST) || { echo "ERROR: basemul.sv missing from $(FILELIST)"; exit 1; }
+	@grep -q '^$(RTL_DIR)/basemul\.sv$$' $(FILELIST) || { echo "ERROR: $(RTL_DIR)/basemul.sv missing from $(FILELIST)"; exit 1; }
 	mkdir -p $(COV_DIR)
 	$(VCS) $(VCS_OPTS) $(TB_DEFINES) $(COVERAGE_OPTS) \
 	    -f $(FILELIST) \
@@ -372,7 +379,7 @@ spyglass_prj:
 	@echo "set_option language_mode sverilog" >> $(SPYGLASS_PROJECT)
 	@echo "set_option enableSV yes" >> $(SPYGLASS_PROJECT)
 	@echo "set_option enableSV09 yes" >> $(SPYGLASS_PROJECT)
-	@echo "set_option incdir rtl" >> $(SPYGLASS_PROJECT)
+	@echo "set_option incdir $(RTL_DIR)" >> $(SPYGLASS_PROJECT)
 	@echo "set_option work_dir $(SPYGLASS_WORK)" >> $(SPYGLASS_PROJECT)
 
 	@for f in $(RTL_FILES); do \

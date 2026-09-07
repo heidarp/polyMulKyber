@@ -38,7 +38,7 @@ import modulus_funcs_pkg::*;
 
 //    barret_reduce = (r13 >= 13'd3329) ? (r13 - 13'd3329) : r13[MODULUS_WIDTH-1:0];
 //end
-
+/*
 module barret_reduce_mod  (
     input  logic [2*MODULUS_WIDTH-1:0] shifted_in,
     output logic [MODULUS_WIDTH-1:0]   barret_reduce
@@ -93,7 +93,7 @@ always_comb begin
         //endcase
 end
 endmodule
-
+*/
 
 
 
@@ -138,10 +138,10 @@ always @(posedge clk) begin
     end
 end
 
-//assign mul_reduced = barret_reduce(R_mul_res_wide);
+assign mul_reduced = barret_reduce(R_mul_res_wide);
 
 
-barret_reduce_mod u_barret_reduce (.shifted_in(R_mul_res_wide), .barret_reduce(mul_reduced));
+//barret_reduce_mod u_barret_reduce (.shifted_in(R_mul_res_wide), .barret_reduce(mul_reduced));
 
 
 
