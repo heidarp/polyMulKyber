@@ -71,17 +71,22 @@ package modulus_funcs_pkg;
  logic [13:0] r14;
   logic [12:0] r13;
   
+  logic [12:0] shifted_in_13;
+  
+  shifted_in_13 = shifted_in[12:0];
+  
+  
  tmp_a = shifted_in + shifted_in[23:2] - shifted_in[23:6] - shifted_in[23:8];
    tl  = tmp_a[23:12];
-   r14 = {1'b0,shifted_in[12:0]}
-             - {1'b0,tl[0],   12'b0}              // (t<<12) mod 2^13
-             + {1'b0,tl[2:0], 10'b0}              // (t<<10) mod 2^13
-             - {1'b0,tl[4:0],  8'b0}              // (t<<8)  mod 2^13
-             - {1'b0,tl}
-             +{1'b00,MODULUS_BIN};
+   r13 = {shifted_in_13}
+             - {tl[0],   12'b0}              // (t<<12) mod 2^13
+             + {tl[2:0], 10'b0}              // (t<<10) mod 2^13
+             - {tl[4:0],  8'b0}              // (t<<8)  mod 2^13
+             - {tl}
+             +{MODULUS_BIN};
              
              
-             r13=r14[12:0];
+             //r13=r14[12:0];
                barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);   
 //             if (r14[13] ==1) begin
 //             barret_reduce = r13 + {1'b00,MODULUS_BIN};
@@ -91,7 +96,7 @@ package modulus_funcs_pkg;
 //             
 //             end
              
-      barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);   
+      //barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);   
 //==================================
 
 
