@@ -38,7 +38,7 @@ import modulus_funcs_pkg::*;
 
 //    barret_reduce = (r13 >= 13'd3329) ? (r13 - 13'd3329) : r13[MODULUS_WIDTH-1:0];
 //end
-/*
+
 module barret_reduce_mod  (
     input  logic [2*MODULUS_WIDTH-1:0] shifted_in,
     output logic [MODULUS_WIDTH-1:0]   barret_reduce
@@ -49,8 +49,10 @@ always_comb begin
 
         
         logic [12:0] tl;
- logic [13:0] r14;
+ logic signed [13:0] r14;
+  logic  [14:0] r15;
   logic [12:0] r13;
+  logic signed [12:0] r13_n_mod;
   
  tmp_a = shifted_in + shifted_in[23:2] - shifted_in[23:6] - shifted_in[23:8];
       
@@ -60,16 +62,41 @@ always_comb begin
 
 
    tl  = tmp_a[23:12];
-   r14 = {1'b0,shifted_in[12:0]}
-             - {1'b0,tl[0],   12'b0}              // (t<<12) mod 2^13
-             + {1'b0,tl[2:0], 10'b0}              // (t<<10) mod 2^13
-             - {1'b0,tl[4:0],  8'b0}              // (t<<8)  mod 2^13
-             - {1'b0,tl}
-             +{1'b00,MODULUS_BIN};
-             
-             
-             r13=r14[12:0];
-               barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);   
+
+  logic [12:0] shifted_in_13;
+  
+  shifted_in_13 = shifted_in[23:12];
+
+
+   tmp_b = shifted_in + shifted_in[23:2] - shifted_in[23:6] - shifted_in[23:8];
+
+
+
+             r13_n_mod = 
+              {shifted_in[12:0]}
+             - {tl[0],   12'b0}              // (t<<12) mod 2^13
+             + {tl[2:0], 10'b0}              // (t<<10) mod 2^13
+             - {tl[4:0],  8'b0}              // (t<<8)  mod 2^13
+             - {tl};
+
+    
+
+case (r13_n_mod[12])
+           1: barret_reduce = r13_n_mod+MODULUS_BIN;
+            default: barret_reduce = r13_n_mod;
+        endcase
+
+/*
+if  (r13>MODULUS_BIN) begin
+barret_reduce = r13_n_mod;
+end
+else begin
+barret_reduce = r13;
+end
+*/
+
+
+               //barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);   
 //             if (r14[13] ==1) begin
 //             barret_reduce = r13 + {1'b00,MODULUS_BIN};
 //             end
@@ -78,7 +105,7 @@ always_comb begin
 //             
 //             end
              
-      barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);          
+      //barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);          
 //        tmp_b = {1'b0, shifted_in[11:0]}
 //            - {1'b0, tmp_a[12], 12'b0}
 //            + {1'b0, tmp_a[14:12], 12'b0}
@@ -93,7 +120,7 @@ always_comb begin
         //endcase
 end
 endmodule
-*/
+
 
 
 
@@ -111,6 +138,8 @@ input clk, reset, input_valid;
 output output_valid;
 input [MODULUS_WIDTH-1:0] oprnd_x, oprnd_y;
 output wire [MODULUS_WIDTH-1:0] mul_reduced;
+
+logic [MODULUS_WIDTH-1:0] mul_reduced_comb;
 
 reg [2*MODULUS_WIDTH-1:0]   R_mul_res_wide;
 reg [MODULUS_WIDTH-1:0]     R_mul_reduced;
@@ -137,14 +166,15 @@ always @(posedge clk) begin
     end
     else begin
         R_mul_res_wide <= oprnd_x * oprnd_y;
-        R_mul_reduced  <= barret_reduce(R_mul_res_wide);
+        //R_mul_reduced  <= barret_reduce(R_mul_res_wide);
+        R_mul_reduced  <= mul_reduced_comb;
     end
 end
 
 assign mul_reduced = R_mul_reduced;
 
 
-//barret_reduce_mod u_barret_reduce (.shifted_in(R_mul_res_wide), .barret_reduce(mul_reduced));
+barret_reduce_mod u_barret_reduce (.shifted_in(R_mul_res_wide), .barret_reduce(mul_reduced_comb));
 
 
 
