@@ -85,7 +85,7 @@ wire [MODULUS_WIDTH-1:0] mul_result;
 wire                     mod_mul_output_valid_UNUSED;
 
 // Signed wide ops so add/sub can overshoot [0, q) before correction.
-reg signed [MODULUS_WIDTH+1:0] R_sub_mod, R_plus_mod, R_add, R_sub, R_subc1, R_addc1,R_add_dly;
+reg signed [MODULUS_WIDTH+1:0] R_sub_mod, R_plus_mod, R_add, R_sub, R_subc1, R_addc1,R_add_dly,R_add_dly2;
 reg [MODULUS_WIDTH-1:0]  R_btfly_res_a, R_btfly_res_b;
 
 
@@ -132,14 +132,17 @@ always @(posedge clk) begin
         
         // Cycle 2
         R_add_dly <= R_add;
+
+        // Cycle 3: mod_mul registers its reduced output, so a+b waits one more clock.
+        R_add_dly2 <= R_add_dly;
         R_sub <= mul_result;
         
 
         // Precompute +/- q one cycle early; R_*c1 holds the raw sum/diff to match that delay.
-        R_sub_mod  <= R_add_dly - MODULUS_BIN;
+        R_sub_mod  <= R_add_dly2 - MODULUS_BIN;
         R_plus_mod <= R_sub + MODULUS_BIN;
         R_subc1    <= R_sub;
-        R_addc1    <= R_add_dly;
+        R_addc1    <= R_add_dly2;
 
         // Bring results into [0, q): subtract q if add overflowed, add q if sub went negative.
         case (R_addc1 >= MODULUS_BIN)

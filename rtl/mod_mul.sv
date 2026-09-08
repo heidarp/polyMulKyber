@@ -112,8 +112,9 @@ output output_valid;
 input [MODULUS_WIDTH-1:0] oprnd_x, oprnd_y;
 output wire [MODULUS_WIDTH-1:0] mul_reduced;
 
-reg [2*MODULUS_WIDTH-1:0] R_mul_res_wide;
-reg [MUL_PIPE_DEPTH-1:0] R_out_valid_dly;
+reg [2*MODULUS_WIDTH-1:0]   R_mul_res_wide;
+reg [MODULUS_WIDTH-1:0]     R_mul_reduced;
+reg [MUL_PIPE_DEPTH-1:0]    R_out_valid_dly;
 
 assign output_valid = R_out_valid_dly[MUL_PIPE_DEPTH-1];
 
@@ -132,13 +133,15 @@ end
 always @(posedge clk) begin
     if (reset == 1'b0) begin
         R_mul_res_wide <= '0;
+        R_mul_reduced  <= '0;
     end
     else begin
         R_mul_res_wide <= oprnd_x * oprnd_y;
+        R_mul_reduced  <= barret_reduce(R_mul_res_wide);
     end
 end
 
-assign mul_reduced = barret_reduce(R_mul_res_wide);
+assign mul_reduced = R_mul_reduced;
 
 
 //barret_reduce_mod u_barret_reduce (.shifted_in(R_mul_res_wide), .barret_reduce(mul_reduced));
