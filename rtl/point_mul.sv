@@ -74,7 +74,12 @@ if (NUM_BUTFLY_PER_STAGE == 1) begin : serial_pairs
     // Twiddle generator: one gamma per pair, delayed to meet the gamma multiply
     // -------------------------------------------------------------------------
 
-    logic [PIPELINED_MUL_RED_EXTRA-1:0] R_generate_new_w;
+    // Pair assembly takes two beats and basemul's gamma multiplier samples w one clock
+    // after its Karatsuba products land, so the advance pulse trails the pair-open beat
+    // by the multiplier latency plus one.
+    localparam int W_ADV_DEPTH = MUL_PIPE_DEPTH + 1;
+
+    logic [W_ADV_DEPTH-1:0] R_generate_new_w;
 
     always @(posedge clk) begin
         if (reset_n == 1'b0) begin
@@ -83,7 +88,7 @@ if (NUM_BUTFLY_PER_STAGE == 1) begin : serial_pairs
         else begin
             // Advance on the beat that opens a new pair (phase 0), not the one that closes it.
             R_generate_new_w[0] <= point_mul_input_valid & ~R_pair_phase;
-            for (int i = 0; i < PIPELINED_MUL_RED_EXTRA-1; i++) begin
+            for (int i = 0; i < W_ADV_DEPTH-1; i++) begin
                 R_generate_new_w[i+1] <= R_generate_new_w[i];
             end
         end
@@ -97,7 +102,7 @@ if (NUM_BUTFLY_PER_STAGE == 1) begin : serial_pairs
         .STAGE_INDEX(TOTAL_NUM_STAGES-1),
         .FWD_INV(0),
         .NUM_W_GENS(1)
-    ) u_w_gen(generated_w, R_generate_new_w[PIPELINED_MUL_RED_EXTRA-1], clk, reset_n);
+    ) u_w_gen(generated_w, R_generate_new_w[W_ADV_DEPTH-1], clk, reset_n);
 
     // -------------------------------------------------------------------------
     // Basemuls + two-beat serialiser (c0 on the first result beat, c1 on the next)
@@ -184,9 +189,12 @@ else begin : parallel_pairs
     // Twiddle generator: NBF/2 distinct gammas per beat
     // -------------------------------------------------------------------------
 
-    // Input capture already contributes one cycle of delay, so the advance chain is
-    // one shorter than the serial path: gamma still meets R_kara_valid inside basemul.
-    localparam int W_ADV_DEPTH = PIPELINED_MUL_RED_EXTRA - 1;
+    // Same depth as the serial path. Input capture delays the pair and this pulse
+    // equally, so it cancels; what differs is that the serial path takes its pulse from
+    // the pair-open beat (one cycle ahead of R_pair_valid) while here the pulse and
+    // R_pair_valid share a cycle. gamma is sampled at R_pair_valid + MUL_PIPE_DEPTH + 1,
+    // and a new twiddle lands every beat, so there is no slack in this one.
+    localparam int W_ADV_DEPTH = MUL_PIPE_DEPTH + 1;
 
     logic [W_ADV_DEPTH-1:0] R_generate_new_w;
 

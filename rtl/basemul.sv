@@ -80,8 +80,19 @@ assign gamma = is_negate ? MODULUS_WIDTH'(MODULUS - w) : w;
 ////////////////////////////////////////////////////////////////////////////////
 
 logic [MODULUS_WIDTH-1:0] R_p00, R_p11, R_s01;
-logic [MODULUS_WIDTH-1:0] R_p00_dly;
 logic R_kara_valid;
+
+// p00 and c1 are captured when R_kara_valid pulses but are consumed when gamma*p11
+// lands, which is one full multiplier latency later. Element 0 is the capture itself;
+// the rest shift every clock.
+//
+// Only NUM_BUTFLY_PER_STAGE > 1 pins this down. There a pair arrives every cycle, so
+// element 0 never holds and the depth must be exact. At NUM_BUTFLY_PER_STAGE == 1
+// pairs are two beats apart and MUL_PIPE_DEPTH-1 works too, so that config passes
+// either way and cannot be used to validate this number.
+localparam int GAMMA_ALIGN_DEPTH = MUL_PIPE_DEPTH;
+
+logic [GAMMA_ALIGN_DEPTH-1:0] [MODULUS_WIDTH-1:0] R_p00_dly;
 
 logic [MODULUS_WIDTH-1:0] gamma_p11;
 logic gamma_mul_valid;
@@ -96,7 +107,7 @@ logic [MODULUS_WIDTH-1:0] c1_no_p00, c1_comb;
 
 always_comb begin
     // Both terms are residues, so a single conditional subtraction lands c0 in [0, q).
-    c0_sum = R_p00_dly + gamma_p11;
+    c0_sum = R_p00_dly[GAMMA_ALIGN_DEPTH-1] + gamma_p11;
     if (c0_sum >= MODULUS) begin
         c0_comb = MODULUS_WIDTH'(c0_sum - MODULUS);
     end
@@ -122,7 +133,8 @@ always_comb begin
     end
 end
 
-logic [MODULUS_WIDTH-1:0] R_c0, R_c1, R_c1_dly;
+logic [MODULUS_WIDTH-1:0] R_c0, R_c1_dly;
+logic [GAMMA_ALIGN_DEPTH-1:0] [MODULUS_WIDTH-1:0] R_c1;
 logic R_res_valid;
 
 always @(posedge clk) begin
@@ -150,14 +162,19 @@ always @(posedge clk) begin
         // Back-to-back pairs overwrite R_c1 every cycle, so it is snapshotted into
         // R_c1_dly below when c0 lands, keeping both results aligned on output_valid.
         if (R_kara_valid) begin
-            R_c1      <= c1_comb;
-            R_p00_dly <= R_p00;
+            R_c1[0]      <= c1_comb;
+            R_p00_dly[0] <= R_p00;
+        end
+
+        for (int i = 0; i < GAMMA_ALIGN_DEPTH-1; i++) begin
+            R_c1[i+1]      <= R_c1[i];
+            R_p00_dly[i+1] <= R_p00_dly[i];
         end
 
         // clk3: gamma*p11 lands; assemble c0 and present both results together.
         if (gamma_mul_valid) begin
             R_c0     <= c0_comb;
-            R_c1_dly <= R_c1;
+            R_c1_dly <= R_c1[GAMMA_ALIGN_DEPTH-1];
         end
         R_res_valid <= gamma_mul_valid;
     end

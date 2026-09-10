@@ -12,6 +12,9 @@ package modulus_funcs_pkg;
     localparam longint unsigned BARRETT_MU    =
         (longint'(1) << BARRETT_SHIFT) / longint'(MODULUS);
 
+    // Flat single-cycle reduce, kept for w_calc only: its reduce chain is unrolled at
+    // elaboration into many instances, so area matters there and latency does not. The
+    // datapath (mod_mul, scaler_mod) uses the pipelined barret_reduce_mod in mod_mul.sv.
     function automatic logic [MODULUS_WIDTH-1:0] barret_reduce(
         input logic [2*MODULUS_WIDTH-1:0] shifted_in
     );
@@ -88,15 +91,15 @@ package modulus_funcs_pkg;
 
 
 
-
+/*
              r13_n_mod = 
               {shifted_in[12:0]}
              - {tl[0],   12'b0}              // (t<<12) mod 2^13
              + {tl[2:0], 10'b0}              // (t<<10) mod 2^13
              - {tl[4:0],  8'b0}              // (t<<8)  mod 2^13
              - {tl};
-
-    
+*/
+    r13_n_mod =  shifted_in[12:0] - tl * 13'd3329;
 
 case (r13_n_mod[12])
            1: barret_reduce = r13_n_mod+MODULUS_BIN;

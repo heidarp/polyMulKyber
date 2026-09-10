@@ -39,86 +39,77 @@ import modulus_funcs_pkg::*;
 //    barret_reduce = (r13 >= 13'd3329) ? (r13 - 13'd3329) : r13[MODULUS_WIDTH-1:0];
 //end
 
+// Pipelined Barrett reduction for q = 3329, used by every datapath reduce
+// (mod_mul, scaler_mod). Flat barret_reduce() in modulus_funcs_pkg stays behind
+// for w_calc, whose reduce chain is unrolled at elaboration and must stay small
+// rather than fast.
+//
+// Two clocks: stage 1 forms t = floor(x*mu / 2^24) as a shift-add tree, stage 2
+// evaluates x - t*q mod 2^13 and applies the single conditional correction.
+// Both halves are multi-operand carry chains; keeping them in one clock was a
+// 13-logic-level path from the product register to the next multiplier.
+//
+// Registering between the two halves makes each one look like a pipelined
+// multi-operand add, which synthesis will otherwise absorb into DSP48 ALUs at a
+// cost of ~2 DSPs per instance. Only the product in mod_mul/scaler_mod belongs
+// in a DSP, so keep this module in fabric.
+(* use_dsp = "no" *)
 module barret_reduce_mod  (
+    input  logic                       clk,
+    input  logic                       reset,
     input  logic [2*MODULUS_WIDTH-1:0] shifted_in,
-    output logic [MODULUS_WIDTH-1:0]   barret_reduce
+    output logic [MODULUS_WIDTH-1:0]   reduced
 );
+
+// Stage 1: mu = 2^24/q as 1 + 2^-2 - 2^-6 - 2^-8, so the quotient is a sum of shifts.
+logic [2*MODULUS_WIDTH-1:0] tmp_a;
+
 always_comb begin
-        logic [23:0] tmp_a;
-        logic [12+2:0]   tmp_b;
+    tmp_a = shifted_in
+          + shifted_in[2*MODULUS_WIDTH-1:2]
+          - shifted_in[2*MODULUS_WIDTH-1:6]
+          - shifted_in[2*MODULUS_WIDTH-1:8];
+end
 
-        
-        logic [12:0] tl;
- logic signed [13:0] r14;
-  logic  [14:0] r15;
-  logic [12:0] r13;
-  logic signed [12:0] r13_n_mod;
-  
- tmp_a = shifted_in + shifted_in[23:2] - shifted_in[23:6] - shifted_in[23:8];
-      
-//        tmp_b = {1'b0, shifted_in[MODULUS_WIDTH+1:0]}
-//            - ({1'b0, tmp_a[2*MODULUS_WIDTH-9:MODULUS_WIDTH-1], 9'b0}
-//            +  {1'b0, tmp_a[MODULUS_WIDTH+1:MODULUS_WIDTH-1], tmp_a[2*MODULUS_WIDTH-3:MODULUS_WIDTH-1]});
+reg [MODULUS_WIDTH-1:0] R_tl;
+reg [MODULUS_WIDTH:0]   R_shifted_in_low;
+reg [MODULUS_WIDTH-1:0] R_reduced;
 
+// Stage 2: q = 2^12 - 2^10 + 2^8 + 1, so t*q is also a sum of shifts. Only the low
+// 13 bits of x - t*q matter; t is off by at most one q, fixed by the correction below.
+logic [MODULUS_WIDTH:0] tl;
+logic [MODULUS_WIDTH:0] r13_n_mod;
 
-   tl  = tmp_a[23:12];
+always_comb begin
+    tl = {1'b0, R_tl};
 
-  logic [12:0] shifted_in_13;
-  
-  shifted_in_13 = shifted_in[23:12];
+    r13_n_mod = R_shifted_in_low
+              - {tl[0],   12'b0}              // (t<<12) mod 2^13
+              + {tl[2:0], 10'b0}              // (t<<10) mod 2^13
+              - {tl[4:0],  8'b0}              // (t<<8)  mod 2^13
+              - tl;
+end
 
+always @(posedge clk) begin
+    if (reset == 1'b0) begin
+        R_tl             <= '0;
+        R_shifted_in_low <= '0;
+        R_reduced        <= '0;
+    end
+    else begin
+        R_tl             <= tmp_a[2*MODULUS_WIDTH-1:MODULUS_WIDTH];
+        R_shifted_in_low <= shifted_in[MODULUS_WIDTH:0];
 
-   tmp_b = shifted_in + shifted_in[23:2] - shifted_in[23:6] - shifted_in[23:8];
-
-
-
-             r13_n_mod = 
-              {shifted_in[12:0]}
-             - {tl[0],   12'b0}              // (t<<12) mod 2^13
-             + {tl[2:0], 10'b0}              // (t<<10) mod 2^13
-             - {tl[4:0],  8'b0}              // (t<<8)  mod 2^13
-             - {tl};
-
-    
-
-case (r13_n_mod[12])
-           1: barret_reduce = r13_n_mod+MODULUS_BIN;
-            default: barret_reduce = r13_n_mod;
+        // MSB set => under-subtracted; add q back into range.
+        case (r13_n_mod[MODULUS_WIDTH])
+            1:       R_reduced <= MODULUS_WIDTH'(r13_n_mod + MODULUS_BIN);
+            default: R_reduced <= r13_n_mod[MODULUS_WIDTH-1:0];
         endcase
-
-/*
-if  (r13>MODULUS_BIN) begin
-barret_reduce = r13_n_mod;
+    end
 end
-else begin
-barret_reduce = r13;
-end
-*/
 
+assign reduced = R_reduced;
 
-               //barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);   
-//             if (r14[13] ==1) begin
-//             barret_reduce = r13 + {1'b00,MODULUS_BIN};
-//             end
-//             else begin
-//             barret_reduce=r13;
-//             
-//             end
-             
-      //barret_reduce = MODULUS_WIDTH '((r13 >= 13'd3329) ? (r13 - 13'd3329) : r13);          
-//        tmp_b = {1'b0, shifted_in[11:0]}
-//            - {1'b0, tmp_a[12], 12'b0}
-//            + {1'b0, tmp_a[14:12], 12'b0}
-//            - {1'b0, tmp_a[16:12], 8'b0}
-//            - {1'b0, tmp_a[23:12]};
-//            
-
-//        // MSB of tmp_b set => under-subtracted; add q back into range.
-//        case (tmp_b[MODULUS_WIDTH+1])
-//            1: barret_reduce = tmp_b[MODULUS_WIDTH-1:0] + MODULUS_BIN;
-//            default: barret_reduce = tmp_b[MODULUS_WIDTH-1:0];
-        //endcase
-end
 endmodule
 
 
@@ -139,10 +130,7 @@ output output_valid;
 input [MODULUS_WIDTH-1:0] oprnd_x, oprnd_y;
 output wire [MODULUS_WIDTH-1:0] mul_reduced;
 
-logic [MODULUS_WIDTH-1:0] mul_reduced_comb;
-
 reg [2*MODULUS_WIDTH-1:0]   R_mul_res_wide;
-reg [MODULUS_WIDTH-1:0]     R_mul_reduced;
 reg [MUL_PIPE_DEPTH-1:0]    R_out_valid_dly;
 
 assign output_valid = R_out_valid_dly[MUL_PIPE_DEPTH-1];
@@ -162,22 +150,18 @@ end
 always @(posedge clk) begin
     if (reset == 1'b0) begin
         R_mul_res_wide <= '0;
-        R_mul_reduced  <= '0;
     end
     else begin
         R_mul_res_wide <= oprnd_x * oprnd_y;
-        //R_mul_reduced  <= barret_reduce(R_mul_res_wide);
-        R_mul_reduced  <= mul_reduced_comb;
     end
 end
 
-assign mul_reduced = R_mul_reduced;
-
-
-barret_reduce_mod u_barret_reduce (.shifted_in(R_mul_res_wide), .barret_reduce(mul_reduced_comb));
-
-
-
+barret_reduce_mod u_barret_reduce (
+    .clk        (clk),
+    .reset      (reset),
+    .shifted_in (R_mul_res_wide),
+    .reduced    (mul_reduced)
+);
 
 
 endmodule

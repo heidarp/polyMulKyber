@@ -15,7 +15,8 @@ package ntt_pkg;
 `else
     localparam NUM_BUTFLY_PER_STAGE = `NUM_BUTFLY_PER_STAGE;
 `endif
-    localparam MUL_PIPE_DEPTH       = 2;
+    // 1 clock for the wide product + 2 clocks for the pipelined Barrett reduce.
+    localparam MUL_PIPE_DEPTH       = 3;
     // The phi pre/post-twist path is unused for Kyber (the incomplete NTT is negacyclic by
     // construction) and is left instantiated-out in forward_ntt/inverse_ntt.
     localparam PHI_VALUE_POW_1      = 2016;
