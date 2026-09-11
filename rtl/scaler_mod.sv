@@ -10,6 +10,7 @@ module scaler_mod(oprnd_x, mul_reduced, input_valid, output_valid, clk, reset);
     input  [MODULUS_WIDTH-1:0] oprnd_x;
     output wire [MODULUS_WIDTH-1:0] mul_reduced;
 
+    reg [MODULUS_WIDTH-1:0]     R_oprnd_x;
     reg [2*MODULUS_WIDTH-1:0] R_mul_res_wide;
     reg [MUL_PIPE_DEPTH-1:0]  R_out_valid_dly;
 
@@ -27,16 +28,18 @@ module scaler_mod(oprnd_x, mul_reduced, input_valid, output_valid, clk, reset);
         end
     end
 
-    wire [MODULUS_WIDTH+1:0]  t3    = {oprnd_x, 1'b0} + oprnd_x;
-    wire [MODULUS_WIDTH+2:0]  t7    = {oprnd_x, 3'b0} - oprnd_x;
+    wire [MODULUS_WIDTH+1:0]  t3    = {R_oprnd_x, 1'b0} + R_oprnd_x;
+    wire [MODULUS_WIDTH+2:0]  t7    = {R_oprnd_x, 3'b0} - R_oprnd_x;
     wire [MODULUS_WIDTH+7:0]  t231  = {t7, 5'b0} + t7;
     wire [MODULUS_WIDTH+11:0] mul_c = {t3, 10'b0} + t231;
 
     always @(posedge clk) begin
         if (reset == 1'b0) begin
+            R_oprnd_x      <= '0;
             R_mul_res_wide <= '0;
         end
         else begin
+            R_oprnd_x      <= oprnd_x;
             R_mul_res_wide <= mul_c;
         end
     end

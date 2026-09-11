@@ -12,12 +12,13 @@ package ntt_pkg;
 `else
     localparam NUM_BUTFLY_PER_STAGE = `NUM_BUTFLY_PER_STAGE;
 `endif
-    localparam MUL_PIPE_DEPTH       = 3;
+    localparam MUL_PIPE_DEPTH       = 4;
     localparam PHI_VALUE_POW_1      = 2016;
     localparam INV_PHI_VALUE_POW_1  = 998612;
     localparam SCALER               = 3303;
     localparam PHI_HALF_LENGTH      = 128;
     localparam PIPELINED_MUL_RED_EXTRA = 3;
+    localparam GS_INPUT_PIPE_DEPTH     = 1;
 
     localparam MODULUS_WIDTH = $clog2(MODULUS);
     localparam [MODULUS_WIDTH-1:0] MODULUS_BIN = MODULUS;
@@ -28,6 +29,8 @@ package ntt_pkg;
     localparam PHI_S1_CNT_WIDTH = $clog2(PHI_HALF_LENGTH);
 
     localparam PIPELINED_MUL_RED_DELAY = MUL_PIPE_DEPTH + PIPELINED_MUL_RED_EXTRA;
+    localparam GS_PIPELINED_MUL_RED_DELAY =
+        PIPELINED_MUL_RED_DELAY + GS_INPUT_PIPE_DEPTH;
 
     typedef struct packed {
         logic [NUM_BUTFLY_PER_STAGE*2-1:0] [MODULUS_WIDTH-1:0] coefs;

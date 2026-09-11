@@ -63,7 +63,7 @@ module basemul(
 
     logic [MODULUS_WIDTH:0]   c0_sum;
     logic [MODULUS_WIDTH-1:0] c0_comb;
-    logic [MODULUS_WIDTH:0]   c1_sub_p00, c1_sub_p11;
+    logic signed [MODULUS_WIDTH:0] c1_raw_p00, c1_raw_p11;
     logic [MODULUS_WIDTH-1:0] c1_no_p00, c1_comb;
 
     always_comb begin
@@ -75,20 +75,20 @@ module basemul(
             c0_comb = MODULUS_WIDTH'(c0_sum);
         end
 
-        c1_sub_p00 = R_s01 + MODULUS - R_p00;
-        if (c1_sub_p00 >= MODULUS) begin
-            c1_no_p00 = MODULUS_WIDTH'(c1_sub_p00 - MODULUS);
+        c1_raw_p00 = R_s01 - R_p00;
+        if (c1_raw_p00 < 0) begin
+            c1_no_p00 = MODULUS_WIDTH'(c1_raw_p00 + MODULUS);
         end
         else begin
-            c1_no_p00 = MODULUS_WIDTH'(c1_sub_p00);
+            c1_no_p00 = MODULUS_WIDTH'(c1_raw_p00);
         end
 
-        c1_sub_p11 = c1_no_p00 + MODULUS - R_p11;
-        if (c1_sub_p11 >= MODULUS) begin
-            c1_comb = MODULUS_WIDTH'(c1_sub_p11 - MODULUS);
+        c1_raw_p11 = c1_no_p00 - R_p11;
+        if (c1_raw_p11 < 0) begin
+            c1_comb = MODULUS_WIDTH'(c1_raw_p11 + MODULUS);
         end
         else begin
-            c1_comb = MODULUS_WIDTH'(c1_sub_p11);
+            c1_comb = MODULUS_WIDTH'(c1_raw_p11);
         end
     end
 

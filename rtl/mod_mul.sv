@@ -65,6 +65,7 @@ module mod_mul(oprnd_x, oprnd_y, mul_reduced, input_valid, output_valid, clk, re
     input  [MODULUS_WIDTH-1:0] oprnd_x, oprnd_y;
     output wire [MODULUS_WIDTH-1:0] mul_reduced;
 
+    reg [MODULUS_WIDTH-1:0]     R_oprnd_x, R_oprnd_y;
     reg [2*MODULUS_WIDTH-1:0] R_mul_res_wide;
     reg [MUL_PIPE_DEPTH-1:0]  R_out_valid_dly;
 
@@ -84,10 +85,14 @@ module mod_mul(oprnd_x, oprnd_y, mul_reduced, input_valid, output_valid, clk, re
 
     always @(posedge clk) begin
         if (reset == 1'b0) begin
+            R_oprnd_x      <= '0;
+            R_oprnd_y      <= '0;
             R_mul_res_wide <= '0;
         end
         else begin
-            R_mul_res_wide <= oprnd_x * oprnd_y;
+            R_oprnd_x      <= oprnd_x;
+            R_oprnd_y      <= oprnd_y;
+            R_mul_res_wide <= R_oprnd_x * R_oprnd_y;
         end
     end
 

@@ -79,12 +79,13 @@ module butterfly #(
             reg signed [MODULUS_WIDTH+1:0] R_sub_mod, R_plus_mod, R_add, R_sub, R_subc1, R_addc1;
             reg [MODULUS_WIDTH-1:0] R_btfly_res_a, R_btfly_res_b;
             reg signed [MODULUS_WIDTH+1:0] R_add_pipe [MUL_PIPE_DEPTH-1:0];
+            reg [MODULUS_WIDTH-1:0] R_oprnd_a, R_oprnd_b, R_twdl;
 
             logic signed [MODULUS_WIDTH+1:0] oprna_sub_oprnd_b;
             logic [MODULUS_WIDTH-1:0] oprna_sub_oprnd_b_reduced;
 
             always_comb begin
-                oprna_sub_oprnd_b = btfly_oprnd_a - btfly_oprnd_b;
+                oprna_sub_oprnd_b = R_oprnd_a - R_oprnd_b;
                 if (oprna_sub_oprnd_b < 0) begin
                     oprna_sub_oprnd_b_reduced = oprna_sub_oprnd_b + MODULUS_BIN;
                 end
@@ -95,7 +96,7 @@ module butterfly #(
 
             mod_mul u_mod_mul (
                 .oprnd_x      (oprna_sub_oprnd_b_reduced),
-                .oprnd_y      (twdl_fctr),
+                .oprnd_y      (R_twdl),
                 .mul_reduced  (mul_result),
                 .input_valid  (1'b1),
                 .output_valid (mod_mul_output_valid_UNUSED),
@@ -105,6 +106,9 @@ module butterfly #(
 
             always @(posedge clk) begin
                 if (reset_n == 1'b0) begin
+                    R_oprnd_a     <= '0;
+                    R_oprnd_b     <= '0;
+                    R_twdl        <= '0;
                     R_sub_mod     <= '0;
                     R_plus_mod    <= '0;
                     R_add         <= '0;
@@ -118,7 +122,11 @@ module butterfly #(
                     end
                 end
                 else begin
-                    R_add <= btfly_oprnd_a + btfly_oprnd_b;
+                    R_oprnd_a <= btfly_oprnd_a;
+                    R_oprnd_b <= btfly_oprnd_b;
+                    R_twdl    <= twdl_fctr;
+
+                    R_add <= R_oprnd_a + R_oprnd_b;
 
                     R_add_pipe[0] <= R_add;
                     for (int i = 0; i < MUL_PIPE_DEPTH-1; i++) begin

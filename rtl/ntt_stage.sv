@@ -20,7 +20,8 @@ module ntt_stage #(
     output wire poly_type ouput_poly;
     input  clk, reset_n;
 
-    localparam VALID_DLY_DEPTH = DELAY_NUM_CLOCKS + PIPELINED_MUL_RED_DELAY;
+    localparam VALID_DLY_DEPTH = DELAY_NUM_CLOCKS
+        + ((FWD_INV == 1) ? GS_PIPELINED_MUL_RED_DELAY : PIPELINED_MUL_RED_DELAY);
     localparam CNT_WIDTH = $clog2(DELAY_NUM_CLOCKS);
 
     localparam int NEXT_COEF_LOC_NO_DPND =
