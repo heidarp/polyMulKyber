@@ -27,7 +27,6 @@ module phi_calc #(
     logic [2*MODULUS_WIDTH-1:0] next_advanced_phi_cycle_comb_b;
     logic [MODULUS_WIDTH-1:0]   R_phi_reduced_instance_b;
 
-    // Ping-pong: A and B hold consecutive phi powers; R_Sel alternates which is emitted.
     logic R_Sel;
 
     assign phi_reduced_instance_a = barret_reduce(R_last_advanced_phi_instance_a);
@@ -45,7 +44,6 @@ module phi_calc #(
             R_Sel <= '0;
         end
         else begin
-
             if (phi_cnt_rst) begin
                 if (FWD_INV == 0) begin
                     R_phi_reduced_instance_a <= PHI_INIT_VALS_I;
@@ -54,12 +52,10 @@ module phi_calc #(
                 else begin
                     R_phi_reduced_instance_a <= SCALED_INV_PHI_INIT_VALS_I;
                     R_last_advanced_phi_instance_a <= SCALED_INV_PHI_INIT_VALS_I;
-                    
                 end
                 R_Sel <= '0;
             end
             else if (phi_cnt_en) begin
-                // Advance by ADV_*_PHI_VALUE (phi^(2*step)); emit A/B on alternate cycles.
                 R_last_advanced_phi_instance_a <= next_advanced_phi_cycle_comb_a;
                 R_phi_reduced_instance_a <= phi_reduced_instance_a;
                 R_Sel <= !R_Sel;
@@ -88,7 +84,6 @@ module phi_calc #(
                 R_last_advanced_phi_instance_b <= PHI_INIT_VALS_ADV;
             end
             else begin
-                // B seeded one phi-step ahead of A (ADV constants) so R_Sel alternation stays contiguous.
                 R_phi_reduced_instance_b <= PHI_INIT_VALS_ADV;
                 R_last_advanced_phi_instance_b <= SCALED_INV_PHI_INIT_VALS_ADV;
             end

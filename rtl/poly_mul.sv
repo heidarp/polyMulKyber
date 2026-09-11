@@ -3,83 +3,74 @@
 import ntt_pkg::*;
 
 module poly_mul(input_poly_x, input_poly_y, output_poly, clk, reset_n);
-input  clk, reset_n;
-input  poly_type input_poly_x;
-input  poly_type input_poly_y;
-output poly_type output_poly;
 
-poly_type fwd_ntt_res_x;
-poly_type fwd_ntt_res_y;
+    input  clk, reset_n;
+    input  poly_type input_poly_x;
+    input  poly_type input_poly_y;
+    output poly_type output_poly;
 
-forward_ntt u_fwd_ntt_x(input_poly_x, fwd_ntt_res_x, clk, reset_n);
-forward_ntt u_fwd_ntt_y(input_poly_y, fwd_ntt_res_y, clk, reset_n);
+    poly_type fwd_ntt_res_x;
+    poly_type fwd_ntt_res_y;
 
-poly_type point_mul_reseult;
+    forward_ntt u_fwd_ntt_x(input_poly_x, fwd_ntt_res_x, clk, reset_n);
+    forward_ntt u_fwd_ntt_y(input_poly_y, fwd_ntt_res_y, clk, reset_n);
 
-point_mul u_point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
+    poly_type point_mul_reseult;
 
-poly_type intt_result;
+    point_mul u_point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
 
-inverse_ntt u_inverse_ntt(
-    point_mul_reseult,
-    intt_result,
-    clk,
-    reset_n
-);
+    poly_type intt_result;
 
-// The INTT butterflies never halve, so each coefficient leaves 2^TOTAL_NUM_STAGES too large.
-// SCALER is n^{-1} mod q, applied here as a constant modular multiply per lane; inverse_ntt
-// itself stays an unnormalized transform. Only ever apply this once along the path -- the
-// SCALER folded into SCALED_INV_PHI_INIT_VALS reaches the datapath through phi_gen, which is
-// instantiated-out for Kyber.
-logic [NUM_COEFS_PER_STAGE-1:0] scaler_mul_res_valid;
+    inverse_ntt u_inverse_ntt(
+        point_mul_reseult,
+        intt_result,
+        clk,
+        reset_n
+    );
 
-generate
-    for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i++) begin: scaler_muls
-        scaler_mod u_scaler_mul(
-            intt_result.coefs[gv_i],
-            output_poly.coefs[gv_i],
-            intt_result.valid,
-            scaler_mul_res_valid[gv_i],
-            clk,
-            reset_n
-        );
-    end
-endgenerate
+    logic [NUM_COEFS_PER_STAGE-1:0] scaler_mul_res_valid;
 
-assign output_poly.valid = &scaler_mul_res_valid;
+    generate
+        for (genvar gv_i = 0; gv_i < NUM_COEFS_PER_STAGE; gv_i++) begin: scaler_muls
+            scaler_mod u_scaler_mul(
+                intt_result.coefs[gv_i],
+                output_poly.coefs[gv_i],
+                intt_result.valid,
+                scaler_mul_res_valid[gv_i],
+                clk,
+                reset_n
+            );
+        end
+    endgenerate
+
+    assign output_poly.valid = &scaler_mul_res_valid;
 
 `ifdef NTT_DEBUG_PROBE
-// >>>>>>>>>>>>>>>>>>>> DEBUG PROBE - delete this whole block >>>>>>>>>>>>>>>>>>>>
-// Taps every stage boundary for ntt_debug_probe.sv / check_ntt_stages.py.
-// fntt.stage[k+1] is the output of forward stage k; the last stage drives
-// fwd_ntt_res_* directly. Same shape for the inverse side.
-poly_type [TOTAL_NUM_STAGES-1:0] dbg_fwd_x, dbg_fwd_y, dbg_inv;
+    poly_type [TOTAL_NUM_STAGES-1:0] dbg_fwd_x, dbg_fwd_y, dbg_inv;
 
-generate
-    for (genvar gv_d = 0; gv_d < TOTAL_NUM_STAGES-1; gv_d++) begin: dbg_stage_taps
-        assign dbg_fwd_x[gv_d] = u_fwd_ntt_x.fntt.stage[gv_d+1];
-        assign dbg_fwd_y[gv_d] = u_fwd_ntt_y.fntt.stage[gv_d+1];
-        assign dbg_inv[gv_d]   = u_inverse_ntt.intt.stage[gv_d+1];
-    end
-endgenerate
+    generate
+        for (genvar gv_d = 0; gv_d < TOTAL_NUM_STAGES-1; gv_d++) begin: dbg_stage_taps
+            assign dbg_fwd_x[gv_d] = u_fwd_ntt_x.fntt.stage[gv_d+1];
+            assign dbg_fwd_y[gv_d] = u_fwd_ntt_y.fntt.stage[gv_d+1];
+            assign dbg_inv[gv_d]   = u_inverse_ntt.intt.stage[gv_d+1];
+        end
+    endgenerate
 
-assign dbg_fwd_x[TOTAL_NUM_STAGES-1] = fwd_ntt_res_x;
-assign dbg_fwd_y[TOTAL_NUM_STAGES-1] = fwd_ntt_res_y;
-assign dbg_inv[TOTAL_NUM_STAGES-1]   = intt_result;
+    assign dbg_fwd_x[TOTAL_NUM_STAGES-1] = fwd_ntt_res_x;
+    assign dbg_fwd_y[TOTAL_NUM_STAGES-1] = fwd_ntt_res_y;
+    assign dbg_inv[TOTAL_NUM_STAGES-1]   = intt_result;
 
-ntt_debug_probe u_ntt_debug_probe(
-    clk,
-    reset_n,
-    input_poly_x,
-    input_poly_y,
-    dbg_fwd_x,
-    dbg_fwd_y,
-    point_mul_reseult,
-    dbg_inv,
-    output_poly
-);
-// <<<<<<<<<<<<<<<<<<<< DEBUG PROBE - delete this whole block <<<<<<<<<<<<<<<<<<<<
+    ntt_debug_probe u_ntt_debug_probe(
+        clk,
+        reset_n,
+        input_poly_x,
+        input_poly_y,
+        dbg_fwd_x,
+        dbg_fwd_y,
+        point_mul_reseult,
+        dbg_inv,
+        output_poly
+    );
 `endif
 
 endmodule
