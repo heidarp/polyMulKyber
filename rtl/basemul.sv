@@ -49,7 +49,7 @@ module basemul(
     logic [MODULUS_WIDTH-1:0] gamma;
     assign gamma = is_negate ? MODULUS_WIDTH'(MODULUS - w) : w;
 
-    logic [MODULUS_WIDTH-1:0] R_p00, R_p11, R_s01;
+    logic [MODULUS_WIDTH-1:0] R_p00, R_p11;
     logic R_kara_valid;
 
     localparam int GAMMA_ALIGN_DEPTH = MUL_PIPE_DEPTH;
@@ -57,12 +57,12 @@ module basemul(
     logic [GAMMA_ALIGN_DEPTH-1:0] [MODULUS_WIDTH-1:0] R_p00_dly;
 
     logic [MODULUS_WIDTH-1:0] R_c1_partial;
-    logic [MODULUS_WIDTH-1:0] R_p11_hold;
+   
 
     logic [MODULUS_WIDTH-1:0] gamma_p11;
     logic gamma_mul_valid;
 
-    mod_mul u_mod_mul_gamma (R_p11_hold, gamma, gamma_p11, R_kara_valid, gamma_mul_valid, clk, reset_n);
+    mod_mul u_mod_mul_gamma (R_p11, gamma, gamma_p11, R_kara_valid, gamma_mul_valid, clk, reset_n);
 
     logic [MODULUS_WIDTH:0]   c0_sum;
     logic [MODULUS_WIDTH-1:0] c0_comb;
@@ -90,7 +90,7 @@ module basemul(
             c1_partial_comb = MODULUS_WIDTH'(c1_raw_s01_p00);
         end
 
-        c1_raw_p11 = R_c1_partial - R_p11_hold;
+        c1_raw_p11 = R_c1_partial - R_p11;
         if (c1_raw_p11 < 0) begin
             c1_comb = MODULUS_WIDTH'(c1_raw_p11 + MODULUS);
         end
@@ -107,11 +107,9 @@ module basemul(
         if (reset_n == 1'b0) begin
             R_p00        <= '0;
             R_p11        <= '0;
-            R_s01        <= '0;
             R_p00_dly    <= '0;
             R_kara_valid <= 1'b0;
             R_c1_partial <= '0;
-            R_p11_hold   <= '0;
             R_c0         <= '0;
             R_c1         <= '0;
             R_c1_dly     <= '0;
@@ -121,9 +119,8 @@ module basemul(
             if (karatsuba_muls_output_valid) begin
                 R_p00        <= p00;
                 R_p11        <= p11;
-                R_s01        <= s01;
                 R_c1_partial <= c1_partial_comb;
-                R_p11_hold   <= p11;
+                
             end
             R_kara_valid <= karatsuba_muls_output_valid;
 

@@ -23,8 +23,8 @@ package modulus_funcs_pkg;
         r13_n_mod = shifted_in[12:0] - tl * 13'd3329;
 
         case (r13_n_mod[12])
-            1:       barret_reduce = r13_n_mod + MODULUS_BIN;
-            default: barret_reduce = r13_n_mod;
+            1:       barret_reduce = MODULUS_WIDTH' (r13_n_mod + MODULUS_BIN);
+            default: barret_reduce = MODULUS_WIDTH'(r13_n_mod);
         endcase
     endfunction
 

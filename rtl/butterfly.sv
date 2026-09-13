@@ -43,10 +43,7 @@ module butterfly #(
                     R_addc1              <= '0;
                 end
                 else begin
-                    R_btfly_oprnd_a_pipe[0] <= btfly_oprnd_a;
-                    for (int i = 0; i < MUL_PIPE_DEPTH-1; i++) begin
-                        R_btfly_oprnd_a_pipe[i+1] <= R_btfly_oprnd_a_pipe[i];
-                    end
+                    R_btfly_oprnd_a_pipe <= {R_btfly_oprnd_a_pipe[MUL_PIPE_DEPTH-2:0], btfly_oprnd_a};
 
                     R_add <= {2'b00, mul_result} + {2'b00, R_btfly_oprnd_a_pipe[MUL_PIPE_DEPTH-1]};
                     R_sub <= -{2'b00, mul_result} + {2'b00, R_btfly_oprnd_a_pipe[MUL_PIPE_DEPTH-1]};
