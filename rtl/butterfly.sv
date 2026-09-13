@@ -80,6 +80,8 @@ module butterfly #(
             reg [MODULUS_WIDTH-1:0] R_btfly_res_a, R_btfly_res_b;
             reg signed [MODULUS_WIDTH+1:0] R_add_pipe [MUL_PIPE_DEPTH-1:0];
             reg [MODULUS_WIDTH-1:0] R_oprnd_a, R_oprnd_b, R_twdl;
+            reg [MODULUS_WIDTH-1:0] R_mul_result;
+            reg signed [MODULUS_WIDTH+1:0] R_add_aligned;
 
             logic signed [MODULUS_WIDTH+1:0] oprna_sub_oprnd_b;
             logic [MODULUS_WIDTH-1:0] oprna_sub_oprnd_b_reduced;
@@ -117,6 +119,8 @@ module butterfly #(
                     R_addc1       <= '0;
                     R_btfly_res_a <= '0;
                     R_btfly_res_b <= '0;
+                    R_mul_result  <= '0;
+                    R_add_aligned <= '0;
                     for (int i = 0; i < MUL_PIPE_DEPTH; i++) begin
                         R_add_pipe[i] <= '0;
                     end
@@ -133,12 +137,14 @@ module butterfly #(
                         R_add_pipe[i+1] <= R_add_pipe[i];
                     end
 
-                    R_sub <= mul_result;
+                    R_mul_result  <= mul_result;
+                    R_add_aligned <= R_add_pipe[MUL_PIPE_DEPTH-1];
+                    R_sub         <= R_mul_result;
 
-                    R_sub_mod  <= R_add_pipe[MUL_PIPE_DEPTH-1] - MODULUS_BIN;
+                    R_sub_mod  <= R_add_aligned - MODULUS_BIN;
                     R_plus_mod <= R_sub + MODULUS_BIN;
                     R_subc1    <= R_sub;
-                    R_addc1    <= R_add_pipe[MUL_PIPE_DEPTH-1];
+                    R_addc1    <= R_add_aligned;
 
                     case (R_addc1 >= MODULUS_BIN)
                         1: R_btfly_res_a <= R_sub_mod[MODULUS_WIDTH-1:0];
