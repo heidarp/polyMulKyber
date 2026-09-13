@@ -56,15 +56,22 @@ module basemul(
 
     logic [GAMMA_ALIGN_DEPTH-1:0] [MODULUS_WIDTH-1:0] R_p00_dly;
 
+    logic [MODULUS_WIDTH-1:0] R_c1_partial;
+    logic [MODULUS_WIDTH-1:0] R_p11_hold;
+
     logic [MODULUS_WIDTH-1:0] gamma_p11;
     logic gamma_mul_valid;
 
-    mod_mul u_mod_mul_gamma (R_p11, gamma, gamma_p11, R_kara_valid, gamma_mul_valid, clk, reset_n);
+    mod_mul u_mod_mul_gamma (R_p11_hold, gamma, gamma_p11, R_kara_valid, gamma_mul_valid, clk, reset_n);
 
     logic [MODULUS_WIDTH:0]   c0_sum;
     logic [MODULUS_WIDTH-1:0] c0_comb;
-    logic signed [MODULUS_WIDTH:0] c1_raw_p00, c1_raw_p11;
-    logic [MODULUS_WIDTH-1:0] c1_no_p00, c1_comb;
+
+    logic signed [MODULUS_WIDTH:0] c1_raw_s01_p00;
+    logic [MODULUS_WIDTH-1:0]    c1_partial_comb;
+
+    logic signed [MODULUS_WIDTH:0] c1_raw_p11;
+    logic [MODULUS_WIDTH-1:0]    c1_comb;
 
     always_comb begin
         c0_sum = R_p00_dly[GAMMA_ALIGN_DEPTH-1] + gamma_p11;
@@ -75,15 +82,15 @@ module basemul(
             c0_comb = MODULUS_WIDTH'(c0_sum);
         end
 
-        c1_raw_p00 = R_s01 - R_p00;
-        if (c1_raw_p00 < 0) begin
-            c1_no_p00 = MODULUS_WIDTH'(c1_raw_p00 + MODULUS);
+        c1_raw_s01_p00 = s01 - p00;
+        if (c1_raw_s01_p00 < 0) begin
+            c1_partial_comb = MODULUS_WIDTH'(c1_raw_s01_p00 + MODULUS);
         end
         else begin
-            c1_no_p00 = MODULUS_WIDTH'(c1_raw_p00);
+            c1_partial_comb = MODULUS_WIDTH'(c1_raw_s01_p00);
         end
 
-        c1_raw_p11 = c1_no_p00 - R_p11;
+        c1_raw_p11 = R_c1_partial - R_p11_hold;
         if (c1_raw_p11 < 0) begin
             c1_comb = MODULUS_WIDTH'(c1_raw_p11 + MODULUS);
         end
@@ -103,6 +110,8 @@ module basemul(
             R_s01        <= '0;
             R_p00_dly    <= '0;
             R_kara_valid <= 1'b0;
+            R_c1_partial <= '0;
+            R_p11_hold   <= '0;
             R_c0         <= '0;
             R_c1         <= '0;
             R_c1_dly     <= '0;
@@ -110,9 +119,11 @@ module basemul(
         end
         else begin
             if (karatsuba_muls_output_valid) begin
-                R_p00 <= p00;
-                R_p11 <= p11;
-                R_s01 <= s01;
+                R_p00        <= p00;
+                R_p11        <= p11;
+                R_s01        <= s01;
+                R_c1_partial <= c1_partial_comb;
+                R_p11_hold   <= p11;
             end
             R_kara_valid <= karatsuba_muls_output_valid;
 
