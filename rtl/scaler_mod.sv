@@ -3,9 +3,9 @@
 import ntt_pkg::*;
 import modulus_funcs_pkg::*;
 
-module scaler_mod(oprnd_x, mul_reduced, input_valid, output_valid, clk, reset);
+module scaler_mod(oprnd_x, mul_reduced, input_valid, output_valid, clk, reset, en);
 
-    input  clk, reset, input_valid;
+    input  clk, reset, input_valid, en;
     output output_valid;
     input  [MODULUS_WIDTH-1:0] oprnd_x;
     output wire [MODULUS_WIDTH-1:0] mul_reduced;
@@ -20,7 +20,7 @@ module scaler_mod(oprnd_x, mul_reduced, input_valid, output_valid, clk, reset);
         if (reset == 1'b0) begin
             R_out_valid_dly <= '0;
         end
-        else begin
+        else if (en) begin
             R_out_valid_dly[0] <= input_valid;
             for (int i = 0; i < (MUL_PIPE_DEPTH-1); i++) begin
                 R_out_valid_dly[i+1] <= R_out_valid_dly[i];
@@ -38,7 +38,7 @@ module scaler_mod(oprnd_x, mul_reduced, input_valid, output_valid, clk, reset);
             R_oprnd_x      <= '0;
             R_mul_res_wide <= '0;
         end
-        else begin
+        else if (en) begin
             R_oprnd_x      <= oprnd_x;
             R_mul_res_wide <= mul_c;
         end
@@ -48,7 +48,8 @@ module scaler_mod(oprnd_x, mul_reduced, input_valid, output_valid, clk, reset);
         .clk        (clk),
         .reset      (reset),
         .shifted_in (R_mul_res_wide),
-        .reduced    (mul_reduced)
+        .reduced    (mul_reduced),
+        .en         (en)
     );
 
 endmodule

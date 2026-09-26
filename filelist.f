@@ -14,5 +14,5 @@ rtl/poly_mul.sv
 rtl/scaler_mod.sv
 testbench/nttg_tb.sv
 testbench/tb_poly_mul.sv
-testbench/tb_poly_mul_rand.sv
+verif/tb/tb_poly_mul_rand.sv
 testbench/tb_fwd_ntt.sv

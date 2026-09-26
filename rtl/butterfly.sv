@@ -4,11 +4,11 @@ import ntt_pkg::*;
 
 module butterfly #(
     parameter FWD_INV = 0
-) (btfly_oprnd_a, btfly_oprnd_b, btfly_res_a, btfly_res_b, twdl_fctr, clk, reset_n);
+) (btfly_oprnd_a, btfly_oprnd_b, btfly_res_a, btfly_res_b, twdl_fctr, clk, reset_n, en);
 
     input  [MODULUS_WIDTH-1:0] btfly_oprnd_a, btfly_oprnd_b, twdl_fctr;
     output wire [MODULUS_WIDTH-1:0] btfly_res_a, btfly_res_b;
-    input  clk, reset_n;
+    input  clk, reset_n, en;
 
     generate
         if (FWD_INV == 0) begin : ct_butterfly
@@ -27,7 +27,8 @@ module butterfly #(
                 .input_valid  (1'b1),
                 .output_valid (mod_mul_output_valid_UNUSED),
                 .clk          (clk),
-                .reset        (reset_n)
+                .reset        (reset_n),
+                .en           (en)
             );
 
             always @(posedge clk) begin
@@ -42,7 +43,7 @@ module butterfly #(
                     R_subc1              <= '0;
                     R_addc1              <= '0;
                 end
-                else begin
+                else if (en) begin
                     R_btfly_oprnd_a_pipe <= {R_btfly_oprnd_a_pipe[MUL_PIPE_DEPTH-2:0], btfly_oprnd_a};
 
                     R_add <= {2'b00, mul_result} + {2'b00, R_btfly_oprnd_a_pipe[MUL_PIPE_DEPTH-1]};
@@ -100,7 +101,8 @@ module butterfly #(
                 .input_valid  (1'b1),
                 .output_valid (mod_mul_output_valid_UNUSED),
                 .clk          (clk),
-                .reset        (reset_n)
+                .reset        (reset_n),
+                .en           (en)
             );
 
             always @(posedge clk) begin
@@ -122,7 +124,7 @@ module butterfly #(
                         R_add_pipe[i] <= '0;
                     end
                 end
-                else begin
+                else if (en) begin
                     R_oprnd_a <= btfly_oprnd_a;
                     R_oprnd_b <= btfly_oprnd_b;
                     R_twdl    <= twdl_fctr;

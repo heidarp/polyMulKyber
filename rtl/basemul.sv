@@ -6,7 +6,7 @@ module basemul(
     input  basemul_poly_type     pair_x, pair_y,
     input  [MODULUS_WIDTH-1:0] w,
     output basemul_poly_type     result,
-    input  clk, reset_n, is_negate
+    input  clk, reset_n, is_negate, en
 );
 
     logic R_pair_valid;
@@ -40,9 +40,9 @@ module basemul(
     logic s01_out_valid;
     logic karatsuba_muls_output_valid;
 
-    mod_mul u_mod_mul_p00 (pair_x.coefs[1], pair_y.coefs[1], p00, R_pair_valid, p00_out_valid, clk, reset_n);
-    mod_mul u_mod_mul_p11 (pair_x.coefs[0], pair_y.coefs[0], p11, R_pair_valid, p11_out_valid, clk, reset_n);
-    mod_mul u_mod_mul_s01 (sa_reduced, sb_reduced, s01, R_pair_valid, s01_out_valid, clk, reset_n);
+    mod_mul u_mod_mul_p00 (pair_x.coefs[1], pair_y.coefs[1], p00, R_pair_valid, p00_out_valid, clk, reset_n, en);
+    mod_mul u_mod_mul_p11 (pair_x.coefs[0], pair_y.coefs[0], p11, R_pair_valid, p11_out_valid, clk, reset_n, en);
+    mod_mul u_mod_mul_s01 (sa_reduced, sb_reduced, s01, R_pair_valid, s01_out_valid, clk, reset_n, en);
 
     assign karatsuba_muls_output_valid = p00_out_valid & p11_out_valid & s01_out_valid;
 
@@ -62,7 +62,7 @@ module basemul(
     logic [MODULUS_WIDTH-1:0] gamma_p11;
     logic gamma_mul_valid;
 
-    mod_mul u_mod_mul_gamma (R_p11, gamma, gamma_p11, R_kara_valid, gamma_mul_valid, clk, reset_n);
+    mod_mul u_mod_mul_gamma (R_p11, gamma, gamma_p11, R_kara_valid, gamma_mul_valid, clk, reset_n, en);
 
     logic [MODULUS_WIDTH:0]   c0_sum;
     logic [MODULUS_WIDTH-1:0] c0_comb;
@@ -115,7 +115,7 @@ module basemul(
             R_c1_dly     <= '0;
             R_res_valid  <= 1'b0;
         end
-        else begin
+        else if (en) begin
             if (karatsuba_muls_output_valid) begin
                 R_p00        <= p00;
                 R_p11        <= p11;

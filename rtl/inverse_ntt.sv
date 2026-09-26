@@ -2,9 +2,9 @@
 
 import ntt_pkg::*;
 
-module inverse_ntt(input_poly, output_poly, clk, reset_n);
+module inverse_ntt(input_poly, output_poly, clk, reset_n, en);
 
-    input  clk, reset_n;
+    input  clk, reset_n, en;
     input  poly_type input_poly;
     output poly_type output_poly;
 
@@ -40,7 +40,8 @@ module inverse_ntt(input_poly, output_poly, clk, reset_n);
                     intt.stage[gv_i],
                     intt.stage[gv_i+1],
                     clk,
-                    reset_n
+                    reset_n,
+                    en
                 );
             end
             else if (gv_i == TOTAL_NUM_STAGES-1) begin: last_inv_ntt_stage
@@ -55,7 +56,8 @@ module inverse_ntt(input_poly, output_poly, clk, reset_n);
                     intt.stage[gv_i],
                     inv_phi_input_poly,
                     clk,
-                    reset_n
+                    reset_n,
+                    en
                 );
             end
             else begin: other_inv_stages
@@ -70,7 +72,8 @@ module inverse_ntt(input_poly, output_poly, clk, reset_n);
                     intt.stage[gv_i],
                     intt.stage[gv_i+1],
                     clk,
-                    reset_n
+                    reset_n,
+                    en
                 );
             end
         end

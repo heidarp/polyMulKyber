@@ -74,7 +74,9 @@ function automatic poly_bank_t load_poly_bank_from_mem(
     return polys_ret;
 endfunction
 
-poly_mul u_poly_mul (x_in, y_in, c_out, clk, reset_n);
+logic tb_ntt_ready_UNUSED;
+
+poly_mul u_poly_mul (x_in, y_in, c_out, clk, reset_n, 1'b1, tb_ntt_ready_UNUSED);
 
 integer addr_a;
 integer addr_b;

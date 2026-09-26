@@ -5,16 +5,24 @@ SHELL = /bin/bash
 VCS = vcs
 VERDI_HOME ?= /opt/synopsys/verdi/Verdi_O-2018.09-SP2
 
-# Enhanced VCS options for struct visibility - For Verdi 2024.09+
+# Compile options. Verdi debug and -kdb are only for waveform runs.
+# -kdb starts Verdi while it builds the design database, so regression
+# (FSDB_DUMP=0) leaves them off and collects coverage only.
 VCS_OPTS = -full64 -sverilog +v2k \
-           -debug_acc+all+dmptf \
-           +define+FSDB_DUMP \
+           +incdir+rtl +incdir+testbench +incdir+verif/common +incdir+verif/tests +incdir+.
+
+# Waveforms for a single `make test`. Regression targets turn this off.
+FSDB_DUMP ?= 1
+ifeq ($(FSDB_DUMP),1)
+VCS_OPTS += -debug_acc+all+dmptf \
            +structs=all \
            +memcbk \
            +vpi \
            -kdb \
            -debug_region+cell+encrypt \
-           +incdir+rtl +incdir+testbench +incdir+.
+           +define+FSDB_DUMP
+FSDB_PLUSARGS = +fsdb+autoflush +fsdb+struct=on +fsdb+mda=on
+endif
 
 # Coverage options
 COVERAGE_OPTS = \
@@ -32,17 +40,37 @@ SPYGLASS_WORK = spyglass_work
 # SpyGlass lint goal (can be changed to power, cdc, etc.)
 SPYGLASS_GOAL = lint/lint_rtl
 
-# Test-specific coverage options (can be overridden)
+# Coverage test name. -cm_name at compile only sets the default. VCS does
+# not treat +testname+ as a coverage test, so every run must pass -cm_name.
 CM_TESTNAME ?= test_default
-CM_OPTIONS = +testname+$(CM_TESTNAME)
+CM_OPTIONS = -cm_name $(CM_TESTNAME) -cm_dir ./$(COV_DIR)
 
 # Testbench parameters (override: make compile NUM_POLY=8 WAIT_MIN=0 WAIT_MAX=5 NUM_BUTFLY_PER_STAGE=4)
 NUM_POLY ?= 2
 WAIT_MIN ?= 0
 WAIT_MAX ?= 3
 NUM_BUTFLY_PER_STAGE ?= 1
+SKIP_Y_FWD_NTT ?= 0
+# Downstream backpressure stimulus (BP_ENABLE=1 randomly deasserts downstream_ready)
+BP_ENABLE ?= 0
+BP_LOW_MAX ?= 5
+BP_GAP_MAX ?= 20
+# verif/tests/run_test.svh. One of the names in TESTS, or any of them via `make test`.
+TEST ?= random
+SIM_PLUSARGS = +TEST=$(TEST)
+TESTS = random long_random both_zero one_zero unit all_qm1 single_coeff repeat_pair commute \
+        ready_tied bp_random stall_first stall_last stall_long gaps \
+        reset_idle reset_mid reset_stall
 TB_DEFINES = +define+NUM_POLY=$(NUM_POLY) +define+WAIT_MIN=$(WAIT_MIN) +define+WAIT_MAX=$(WAIT_MAX) \
              +define+NUM_BUTFLY_PER_STAGE=$(NUM_BUTFLY_PER_STAGE)
+
+ifeq ($(SKIP_Y_FWD_NTT),1)
+TB_DEFINES += +define+SKIP_Y_FWD_NTT
+endif
+
+ifeq ($(BP_ENABLE),1)
+TB_DEFINES += +define+BP_ENABLE +define+BP_LOW_MAX=$(BP_LOW_MAX) +define+BP_GAP_MAX=$(BP_GAP_MAX)
+endif
 
 # Source directories
 RTL_DIR = rtl
@@ -69,7 +97,7 @@ RTL_FILES = \
 TB_FILES = \
     $(TB_DIR)/nttg_tb.sv \
     $(TB_DIR)/tb_poly_mul.sv \
-    $(TB_DIR)/tb_poly_mul_rand.sv \
+    verif/tb/tb_poly_mul_rand.sv \
     $(TB_DIR)/tb_fwd_ntt.sv
 
 # Simulation sources (RTL + testbenches)
@@ -84,110 +112,149 @@ SIM_LOG = simulation.log
 COV_DIR = coverage_data
 COV_REPORT_DIR = coverage_report
 
-# Default: poly_mul randomized testbench with reference comparison
-all: poly_mul_rand
+# Bare `make` runs the random scenario on tb_poly_mul_rand.
+.DEFAULT_GOAL := test
 
-# poly_mul workflow (stimulus-only TB, no reference check)
-poly_mul: compile run
-poly_mul_compile: compile
-poly_mul_run: run
-poly_mul_verdi: verdi
-poly_mul_verdi_coverage: verdi_coverage
-poly_mul_coverage_report: coverage_report
-poly_mul_coverage_summary: coverage_summary
-poly_mul_coverage_detail: coverage_detail
-poly_mul_merge_coverage: merge_coverage
-poly_mul_run_test: run_test
-poly_mul_debug: debug
-poly_mul_run_debug: run_debug
-poly_mul_clean: clean
-poly_mul_clean_coverage: clean_coverage
-
-poly_mul_rand_clean_coverage: clean_coverage
-
-# poly_mul randomized testbench with reference comparison
-poly_mul_rand: TOP = tb_poly_mul_rand
-poly_mul_rand: compile run
-poly_mul_rand_compile: TOP = tb_poly_mul_rand
-poly_mul_rand_compile: compile
-poly_mul_rand_run: TOP = tb_poly_mul_rand
-poly_mul_rand_run: run
-poly_mul_rand_verdi: TOP = tb_poly_mul_rand
-poly_mul_rand_verdi: verdi
-poly_mul_rand_verdi_rc: TOP = tb_poly_mul_rand
-poly_mul_rand_verdi_rc:
-	@echo "Opening Verdi with poly_mul_rand wave session..."
-	@if [ -f "$(FSDB)" ]; then \
-	    verdi -ssf $(FSDB) -nrc signal_poly_mul_rand.rc & \
-	else \
-	    echo "Error: $(FSDB) not found. Run 'make poly_mul_rand_run' first."; \
-	    exit 1; \
-	fi
-
-# Sanity: poly_mul_rand + reference check across supported parallelism levels.
+# Sanity: tb_poly_mul_rand + reference check across supported parallelism levels.
 SANITY_NUM_POLY = 6
 SANITY_WAIT_MIN = 0
 SANITY_WAIT_MAX = 3
 SANITY_BUTFLIES = 1 2 4 8
+SANITY_BP_ENABLE ?= 0
+
+# Same sweep as sanity but with random downstream backpressure applied.
+sanity_bp: SANITY_BP_ENABLE = 1
+sanity_bp: sanity
 
 sanity:
 	@echo "=========================================="
-	@echo "Sanity: poly_mul_rand for NUM_BUTFLY_PER_STAGE in ($(SANITY_BUTFLIES))"
+	@echo "Sanity: tb_poly_mul_rand for NUM_BUTFLY_PER_STAGE in ($(SANITY_BUTFLIES))"
 	@echo "  NUM_POLY=$(SANITY_NUM_POLY) WAIT_MIN=$(SANITY_WAIT_MIN) WAIT_MAX=$(SANITY_WAIT_MAX)"
+	@echo "  Includes SKIP_Y_FWD_NTT=0 (default) and SKIP_Y_FWD_NTT=1 (y bypass)"
+	@echo "  BP_ENABLE=$(SANITY_BP_ENABLE) (backpressure stimulus)"
 	@echo "=========================================="
 	@fail=0; \
-	for nbf in $(SANITY_BUTFLIES); do \
-	    echo ""; \
-	    echo "------------------------------------------"; \
-	    echo "Sanity config: NUM_BUTFLY_PER_STAGE=$$nbf"; \
-	    echo "------------------------------------------"; \
-	    $(MAKE) --no-print-directory clean >/dev/null; \
-	    if $(MAKE) --no-print-directory poly_mul_rand \
-	            TOP=tb_poly_mul_rand \
-	            NUM_BUTFLY_PER_STAGE=$$nbf \
-	            NUM_POLY=$(SANITY_NUM_POLY) \
-	            WAIT_MIN=$(SANITY_WAIT_MIN) \
-	            WAIT_MAX=$(SANITY_WAIT_MAX) \
-	            CM_TESTNAME=sanity_nbf_$$nbf; then \
-	        if grep -qE 'Summary: [0-9]+ passed, 0 failed' $(SIM_LOG) 2>/dev/null \
-	           && grep -q 'polynomial multiply results match reference' $(SIM_LOG) 2>/dev/null; then \
-	            echo "PASS: NUM_BUTFLY_PER_STAGE=$$nbf"; \
+	for skip_y in 0 1; do \
+	    for nbf in $(SANITY_BUTFLIES); do \
+	        echo ""; \
+	        echo "------------------------------------------"; \
+	        echo "Sanity config: SKIP_Y_FWD_NTT=$$skip_y NUM_BUTFLY_PER_STAGE=$$nbf BP_ENABLE=$(SANITY_BP_ENABLE)"; \
+	        echo "------------------------------------------"; \
+	        $(MAKE) --no-print-directory clean >/dev/null; \
+	        if $(MAKE) --no-print-directory compile run \
+	                TOP=tb_poly_mul_rand \
+	                SKIP_Y_FWD_NTT=$$skip_y \
+	                NUM_BUTFLY_PER_STAGE=$$nbf \
+	                NUM_POLY=$(SANITY_NUM_POLY) \
+	                WAIT_MIN=$(SANITY_WAIT_MIN) \
+	                WAIT_MAX=$(SANITY_WAIT_MAX) \
+	                BP_ENABLE=$(SANITY_BP_ENABLE) \
+	                CM_TESTNAME=sanity_skip$${skip_y}_nbf_$$nbf; then \
+	            if grep -q 'TEST RESULT: PASS' $(SIM_LOG) 2>/dev/null; then \
+	                echo "PASS: SKIP_Y_FWD_NTT=$$skip_y NUM_BUTFLY_PER_STAGE=$$nbf"; \
+	            else \
+	                echo "FAIL: SKIP_Y_FWD_NTT=$$skip_y NUM_BUTFLY_PER_STAGE=$$nbf (see $(SIM_LOG))"; \
+	                fail=1; \
+	            fi; \
 	        else \
-	            echo "FAIL: NUM_BUTFLY_PER_STAGE=$$nbf (see $(SIM_LOG))"; \
+	            echo "FAIL: SKIP_Y_FWD_NTT=$$skip_y NUM_BUTFLY_PER_STAGE=$$nbf (compile/run error)"; \
 	            fail=1; \
 	        fi; \
-	    else \
-	        echo "FAIL: NUM_BUTFLY_PER_STAGE=$$nbf (compile/run error)"; \
-	        fail=1; \
-	    fi; \
+	    done; \
 	done; \
 	echo ""; \
 	echo "=========================================="; \
 	if [ $$fail -eq 0 ]; then \
-	    echo "SANITY RESULT: PASS (all NUM_BUTFLY_PER_STAGE configs)"; \
+	    echo "SANITY RESULT: PASS (all SKIP_Y_FWD_NTT and NUM_BUTFLY_PER_STAGE configs)"; \
 	else \
 	    echo "SANITY RESULT: FAIL"; \
 	    exit 1; \
 	fi; \
 	echo "=========================================="
 
-# forward_ntt testbench (legacy)
-fwd_ntt: TOP = tb_fwd_ntt
-fwd_ntt: compile run
-fwd_ntt_compile: TOP = tb_fwd_ntt
-fwd_ntt_compile: compile
-fwd_ntt_run: TOP = tb_fwd_ntt
-fwd_ntt_run: run
-fwd_ntt_verdi: TOP = tb_fwd_ntt
-fwd_ntt_verdi: verdi
-fwd_ntt_verdi_coverage: TOP = tb_fwd_ntt
-fwd_ntt_verdi_coverage: verdi_coverage
-fwd_ntt_coverage_report: TOP = tb_fwd_ntt
-fwd_ntt_coverage_report: coverage_report
-fwd_ntt_debug: TOP = tb_fwd_ntt
-fwd_ntt_debug: debug
-fwd_ntt_run_debug: TOP = tb_fwd_ntt
-fwd_ntt_run_debug: run_debug
+# One scenario from verif/tests. Compiles tb_poly_mul_rand, then runs +TEST=$(TEST).
+test:
+	$(MAKE) compile TOP=tb_poly_mul_rand CM_TESTNAME=$(TEST) NUM_POLY=$(NUM_POLY)
+	$(MAKE) run TOP=tb_poly_mul_rand TEST=$(TEST) CM_TESTNAME=$(TEST)
+
+# Every scenario, one elaboration (butterfly width 1, y in coefficient domain).
+# This is the regression to run. Coverage from these runs shares one design.
+# Drop any earlier database first. A vdb from another butterfly width, y path,
+# or -debug_acc build has a different toggle shape, and urg then warns
+# UCAPI-INSTANCEMISMATCH and drops that instance.
+regression:
+	@echo "=========================================="
+	@echo "Regression: all tests, NUM_BUTFLY_PER_STAGE=$(NUM_BUTFLY_PER_STAGE), SKIP_Y_FWD_NTT=$(SKIP_Y_FWD_NTT)"
+	@echo "=========================================="
+	rm -rf $(COV_DIR) $(COV_DIR).vdb $(COV_REPORT_DIR)
+	$(MAKE) compile TOP=tb_poly_mul_rand CM_TESTNAME=regression \
+	    NUM_BUTFLY_PER_STAGE=$(NUM_BUTFLY_PER_STAGE) SKIP_Y_FWD_NTT=$(SKIP_Y_FWD_NTT) \
+	    BP_ENABLE=0 NUM_POLY=4 FSDB_DUMP=0
+	@fail=0; \
+	for t in $(TESTS); do \
+	    echo ""; \
+	    echo "------------------------------------------"; \
+	    echo "TEST $$t"; \
+	    echo "------------------------------------------"; \
+	    if ./$(SIMV) \
+	            -cm line+cond+fsm+tgl+branch+assert \
+	            -cm_dir ./$(COV_DIR) \
+	            -cm_name $$t \
+	            +TEST=$$t \
+	            -l sim_$$t.log \
+	        && grep -q "TEST RESULT: PASS" sim_$$t.log; then \
+	        echo "PASS $$t"; \
+	    else \
+	        echo "FAIL $$t (see sim_$$t.log)"; \
+	        fail=1; \
+	    fi; \
+	done; \
+	echo ""; \
+	if [ $$fail -ne 0 ]; then \
+	    echo "REGRESSION RESULT: FAIL"; \
+	    exit 1; \
+	fi; \
+	echo "REGRESSION RESULT: PASS"
+
+# Same scenarios as regression, then the HTML report from coverage_report.
+# Do not merge this database with a different butterfly width or SKIP_Y_FWD_NTT.
+# FSDB_DUMP=0 on regression keeps -kdb off, so this does not open Verdi.
+regression_cov: regression
+	$(MAKE) coverage_report
+
+# Random and random-backpressure across every legal width and both y paths.
+regression_configs:
+	@echo "=========================================="
+	@echo "Config regression: random and bp_random"
+	@echo "  NUM_BUTFLY_PER_STAGE in (1 2 4 8), SKIP_Y_FWD_NTT in (0 1)"
+	@echo "=========================================="
+	@fail=0; \
+	for skip_y in 0 1; do \
+	    for nbf in 1 2 4 8; do \
+	        for t in random bp_random; do \
+	            echo ""; \
+	            echo "------------------------------------------"; \
+	            echo "TEST $$t  SKIP_Y_FWD_NTT=$$skip_y  NUM_BUTFLY_PER_STAGE=$$nbf"; \
+	            echo "------------------------------------------"; \
+	            if $(MAKE) test TEST=$$t \
+	                    SKIP_Y_FWD_NTT=$$skip_y \
+	                    NUM_BUTFLY_PER_STAGE=$$nbf \
+	                    NUM_POLY=4 BP_ENABLE=0 FSDB_DUMP=0 \
+	                    CM_TESTNAME=$${t}_skip$${skip_y}_nbf_$$nbf; then \
+	                echo "PASS $$t skip=$$skip_y nbf=$$nbf"; \
+	            else \
+	                echo "FAIL $$t skip=$$skip_y nbf=$$nbf"; \
+	                fail=1; \
+	            fi; \
+	        done; \
+	    done; \
+	done; \
+	echo ""; \
+	if [ $$fail -ne 0 ]; then \
+	    echo "CONFIG REGRESSION RESULT: FAIL"; \
+	    exit 1; \
+	fi; \
+	echo "CONFIG REGRESSION RESULT: PASS"
 
 FILELIST = filelist.f
 RTL_FILELIST = rtl.f
@@ -210,10 +277,8 @@ $(RTL_FILELIST): Makefile
 filelist: $(FILELIST) $(RTL_FILELIST)
 	@echo "Wrote $(FILELIST) and $(RTL_FILELIST)"
 
-# >>>>>>>>>>>>>>>>>>>>>>> DEBUG PROBE - delete this block >>>>>>>>>>>>>>>>>>>>>>>
-# make poly_mul DEBUG_PROBE=1  -> compiles ntt_debug_probe.sv and writes
-# ntt_debug_trace.txt, which check_ntt_stages.py reads. Off by default.
-# Use NUM_POLY=1 (default for debug_probe) for a single-polynomial trace.
+# make compile run DEBUG_PROBE=1 NUM_POLY=1 writes ntt_debug_trace.txt.
+# check_stages compares that trace to the software model. Off by default.
 DEBUG_PROBE ?= 0
 PYTHON ?= python3
 
@@ -227,20 +292,16 @@ CHECK_STAGES = $(PYTHON_DIR)/check_ntt_stages.py
 check_stages:
 	$(PYTHON) $(CHECK_STAGES) -t ntt_debug_trace.txt
 
-debug_probe: 
-	$(MAKE) --no-print-directory poly_mul DEBUG_PROBE=1 NUM_POLY=1
-	$(PYTHON) $(CHECK_STAGES) -t ntt_debug_trace.txt
-# <<<<<<<<<<<<<<<<<<<<<<< DEBUG PROBE - delete this block <<<<<<<<<<<<<<<<<<<<<<<
-
 # Compilation target with coverage
 compile: $(FILELIST)
 	@echo "=========================================="
 	@echo "Compiling with enhanced struct support..."
 	@echo "=========================================="
-	@echo "Using -debug_acc method for Verdi 2024.09+ compatibility"
+	@echo "FSDB/Verdi debug: $(FSDB_DUMP)"
 	@echo "Top module: $(TOP)"
 	@echo "File list:  $(FILELIST) (includes basemul.sv)"
 	@echo "TB params: NUM_POLY=$(NUM_POLY) WAIT_MIN=$(WAIT_MIN) WAIT_MAX=$(WAIT_MAX) NUM_BUTFLY_PER_STAGE=$(NUM_BUTFLY_PER_STAGE)"
+	@echo "Backpressure: BP_ENABLE=$(BP_ENABLE) BP_LOW_MAX=$(BP_LOW_MAX) BP_GAP_MAX=$(BP_GAP_MAX)"
 	@grep -q '^$(RTL_DIR)/basemul\.sv$$' $(FILELIST) || { echo "ERROR: $(RTL_DIR)/basemul.sv missing from $(FILELIST)"; exit 1; }
 	mkdir -p $(COV_DIR)
 	$(VCS) $(VCS_OPTS) $(TB_DEFINES) $(COVERAGE_OPTS) \
@@ -256,103 +317,53 @@ compile: $(FILELIST)
 # Simulation target with coverage
 run:
 	@echo "=========================================="
-	@echo "Running simulation with FSDB dumping and coverage..."
+	@echo "Running simulation with coverage..."
 	@echo "=========================================="
 	@echo "Top module: $(TOP)"
 	@echo "Test name: $(CM_TESTNAME)"
-	./$(SIMV) +fsdb+autoflush +fsdb+struct=on +fsdb+mda=on \
+	@echo "Plusargs: $(SIM_PLUSARGS)"
+	@echo "FSDB dump: $(FSDB_DUMP)"
+	./$(SIMV) $(FSDB_PLUSARGS) \
 	    -cm line+cond+fsm+tgl+branch+assert \
 	    $(CM_OPTIONS) \
+	    $(SIM_PLUSARGS) \
 	    -l $(SIM_LOG)
 	@echo ""
 	@echo "Simulation complete."
-	@echo "FSDB file: $(FSDB)"
 	@echo "Log file: $(SIM_LOG)"
 	@echo "Coverage data: $(COV_DIR)"
-	@if [ -f "$(FSDB)" ]; then \
-	    echo "FSDB file size:" $$(du -h "$(FSDB)" | cut -f1); \
-	else \
-	    echo "Warning: FSDB file not created!"; \
+	@if [ "$(FSDB_DUMP)" = "1" ]; then \
+	    echo "FSDB file: $(FSDB)"; \
+	    if [ -f "$(FSDB)" ]; then \
+	        echo "FSDB file size:" $$(du -h "$(FSDB)" | cut -f1); \
+	    else \
+	        echo "Warning: FSDB file not created!"; \
+	    fi; \
 	fi
 
-# Run specific test with coverage
-run_test:
-	@echo "=========================================="
-	@echo "Running test: $(CM_TESTNAME) with coverage..."
-	@echo "=========================================="
-	@if [ -f "$(SIMV)" ]; then \
-	    ./$(SIMV) +fsdb+autoflush +fsdb+struct=on +fsdb+mda=on \
-	        -cm line+cond+fsm+tgl+branch+assert \
-	        +testname+$(CM_TESTNAME) \
-	        -l sim_$(CM_TESTNAME).log; \
-	    echo "Test $(CM_TESTNAME) completed."; \
-	    echo "Coverage data saved in $(COV_DIR)"; \
-	else \
-	    echo "Error: $(SIMV) not found. Run 'make compile' first."; \
-	fi
-
-# Generate HTML coverage report
+# HTML and text coverage report. Batch urg only; this does not open Verdi.
+# -cm_dir coverage_data is stored as coverage_data.vdb on current VCS.
 coverage_report:
 	@echo "=========================================="
 	@echo "Generating HTML coverage report..."
 	@echo "=========================================="
-	@if [ -d "$(COV_DIR)" ]; then \
-	    echo "Using coverage data from: $(COV_DIR)"; \
-	    urg -dir $(COV_DIR) \
-	        -format both \
-	        -report $(COV_REPORT_DIR); \
-	    echo ""; \
-	    echo "Coverage report generated:"; \
-	    echo "  HTML: $(COV_REPORT_DIR)/hierarchy.html"; \
-	    echo "  Text: $(COV_REPORT_DIR)/report.txt"; \
-	    echo ""; \
-	    echo "To view HTML report:"; \
-	    echo "  firefox $(COV_REPORT_DIR)/hierarchy.html &"; \
-	    echo "  or"; \
-	    echo "  google-chrome $(COV_REPORT_DIR)/hierarchy.html &"; \
+	@if [ -d "$(COV_DIR).vdb" ]; then \
+	    covdb="$(COV_DIR).vdb"; \
+	elif [ -d "$(COV_DIR)" ]; then \
+	    covdb="$(COV_DIR)"; \
 	else \
-	    echo "Error: $(COV_DIR) not found. Run 'make run' first."; \
-	fi
-
-# Quick coverage summary
-coverage_summary:
-	@echo "=========================================="
-	@echo "Coverage Summary"
-	@echo "=========================================="
-	@if [ -d "$(COV_DIR)" ]; then \
-	    urg -dir $(COV_DIR) -format text; \
-	else \
-	    echo "No coverage data found. Run 'make run' first."; \
-	fi
-
-# Generate detailed coverage metrics
-coverage_detail:
-	@echo "=========================================="
-	@echo "Detailed Coverage Metrics"
-	@echo "=========================================="
-	@if [ -d "$(COV_DIR)" ]; then \
-	    urg -dir $(COV_DIR) \
-	        -format text \
-	        -metric line+cond+fsm+tgl+branch+assert; \
-	else \
-	    echo "No coverage data found. Run 'make run' first."; \
-	fi
-
-# Merge multiple test coverage runs
-merge_coverage:
-	@echo "=========================================="
-	@echo "Merging coverage from multiple tests..."
-	@echo "=========================================="
-	@if [ -d "$(COV_DIR)" ]; then \
-	    urg -dir $(COV_DIR)/*.vdb \
-	        -format both \
-	        -report $(COV_REPORT_DIR)/merged \
-	        -log $(COV_DIR)/urg_merge.log; \
-	    echo "Coverage merge complete."; \
-	    echo "Reports in: $(COV_REPORT_DIR)/merged"; \
-	else \
-	    echo "Error: $(COV_DIR) not found. Run some tests first."; \
-	fi
+	    echo "Error: no coverage database. Run 'make regression' or 'make run' first."; \
+	    exit 1; \
+	fi; \
+	echo "Using coverage data from: $$covdb"; \
+	urg -dir "$$covdb" \
+	    -format both \
+	    -report $(COV_REPORT_DIR); \
+	test -f $(COV_REPORT_DIR)/hierarchy.html; \
+	echo ""; \
+	echo "Coverage report generated:"; \
+	echo "  HTML: $(COV_REPORT_DIR)/hierarchy.html"; \
+	echo "  Text: $(COV_REPORT_DIR)/report.txt"
 
 # Open Verdi to view waveforms
 verdi:
@@ -364,15 +375,6 @@ verdi:
 	    exit 1; \
 	fi
 
-# Open Verdi with coverage
-verdi_coverage:
-	@echo "Opening Verdi with coverage data..."
-	@if [ -d "$(COV_DIR)" ]; then \
-	    verdi -cov -covdir $(COV_DIR) & \
-	else \
-	    echo "Error: $(COV_DIR) not found. Run 'make run' first."; \
-	    exit 1; \
-	fi
 spyglass_prj:
 	@echo "Creating SpyGlass project file (RTL only, top=$(SPYGLASS_TOP))..."
 	@echo "set_option top $(SPYGLASS_TOP)" > $(SPYGLASS_PROJECT)
@@ -402,39 +404,11 @@ lint: spyglass_prj
 
 
 
-# Debug compile with maximum options and coverage
-debug: clean $(FILELIST)
-	@echo "=========================================="
-	@echo "Compiling with MAXIMUM debug options and coverage..."
-	@echo "=========================================="
-	mkdir -p $(COV_DIR)
-	$(VCS) $(VCS_OPTS) $(TB_DEFINES) $(COVERAGE_OPTS) \
-	    +vcs+flush+all \
-	    +vcs+flush+log \
-	    +define+DEBUG_ENABLED \
-	    -f $(FILELIST) \
-	    -top $(TOP) \
-	    -l compile_debug.log \
-	    -o simv_debug
-	@echo "Debug compilation complete."
-
-# Run debug simulation with coverage
-run_debug:
-	@if [ -f "simv_debug" ]; then \
-	    echo "Running debug simulation with coverage..."; \
-	    ./simv_debug +fsdb+autoflush +fsdb+struct=on +fsdb+mda=on \
-	        -cm line+cond+fsm+tgl+branch+assert \
-	        -l sim_debug.log; \
-	    echo "Coverage data saved in $(COV_DIR)"; \
-	else \
-	    echo "Error: simv_debug not found. Run 'make debug' first."; \
-	fi
-
 # Clean up generated files
 clean:
 	@echo "Cleaning generated files..."
 	rm -rf \
-	    $(SIMV) simv_debug \
+	    $(SIMV) \
 	    simv.daidir \
 	    csrc \
 	    *.log \
@@ -449,145 +423,109 @@ clean:
 	    *.key \
 	    *~ \
 	    core.* \
-	    $(COV_DIR) \
+	    $(COV_DIR) $(COV_DIR).vdb \
 	    $(COV_REPORT_DIR) \
 	    merged_coverage \
 	    ntt_debug_trace.txt \
 	    $(SPYGLASS_WORK) $(SPYGLASS_PROJECT) $(SPYGLASS_LOG)
 	@echo "Clean complete."
 
-# Clean only coverage data
-clean_coverage:
-	@echo "Cleaning coverage data..."
-	rm -rf $(COV_DIR) $(COV_REPORT_DIR) merged_coverage
-	@echo "Coverage clean complete."
-
-# Test coverage example
-test_coverage_example:
-	@echo "=========================================="
-	@echo "Running coverage example sequence..."
-	@echo "=========================================="
-	@echo "1. Clean previous runs..."
-	@$(MAKE) clean_coverage > /dev/null 2>&1
-	@echo "2. Compile with coverage..."
-	@$(MAKE) compile > /dev/null 2>&1
-	@echo "3. Run test1..."
-	@CM_TESTNAME=test1 $(MAKE) run_test > /dev/null 2>&1
-	@echo "4. Run test2..."
-	@CM_TESTNAME=test2 $(MAKE) run_test > /dev/null 2>&1
-	@echo "5. Generate coverage report..."
-	@$(MAKE) coverage_report
-	@echo "6. Show coverage summary..."
-	@echo ""
-	@$(MAKE) coverage_summary
-	@echo ""
-	@echo "Example complete! Open $(COV_REPORT_DIR)/hierarchy.html in browser."
-
-# List all source files
-list:
-	@echo "Source files to be compiled:"
-	@for file in $(FILES); do \
-	    if [ -f "$$file" ]; then \
-	        echo "  ✓ $$file"; \
-	    else \
-	        echo "  ✗ $$file (MISSING)"; \
-	    fi; \
-	done
-
-# Check environment
-env:
-	@echo "Environment check:"
-	@echo "  VCS path: $$(which vcs)"
-	@echo "  VERDI_HOME: $$VERDI_HOME"
-	@if [ -d "$$VERDI_HOME" ]; then \
-	    echo "  VERDI_HOME directory: ✓ exists"; \
-	else \
-	    echo "  VERDI_HOME directory: ✗ NOT FOUND"; \
-	fi
-	@echo "  Coverage tool (urg) path: $$(which urg 2>/dev/null || echo 'Not found')"
-	@echo "  Current directory: $$(pwd)"
-
-# Check URG version
-urg_version:
-	@echo "Checking URG version and options..."
-	@urg -help | head -20
-
-# Help message
 help:
-	@echo "=========================================="
-	@echo "VCS Simulation Makefile with Coverage Help"
-	@echo "=========================================="
+	@echo "polyMulKyber    (bare make runs: make test)"
 	@echo ""
-	@echo "Coverage Types Enabled:"
-	@echo "  -cm line        : Line coverage"
-	@echo "  -cm cond        : Condition coverage"
-	@echo "  -cm fsm         : FSM coverage"
-	@echo "  -cm tgl         : Toggle coverage"
-	@echo "  -cm branch      : Branch coverage"
-	@echo "  -cm assert      : Assertion coverage"
+	@echo "Targets"
+	@echo "  make test                One scenario on tb_poly_mul_rand, then the sim."
+	@echo "  make regression          Every scenario, one compile. Waveforms off."
+	@echo "  make regression_cov      Every scenario, then $(COV_REPORT_DIR)/hierarchy.html. No Verdi."
+	@echo "  make regression_configs  random and bp_random at widths 1, 2, 4, 8 and both y paths."
+	@echo "  make sanity              TEST at widths 1, 2, 4, 8, with and without the y bypass."
+	@echo "  make sanity_bp           Same sweep with random downstream_ready."
+	@echo "  make compile             Elaborate TOP (default tb_poly_mul) with coverage."
+	@echo "  make run                 Run ./simv. Build options are already fixed by compile."
+	@echo "  make verdi               Open waveform.fsdb. Needs a run with FSDB_DUMP=1."
+	@echo "  make coverage_report     Write coverage_report/hierarchy.html from the last runs."
+	@echo "  make check_stages        Compare ntt_debug_trace.txt to the software model."
+	@echo "  make lint                SpyGlass lint/lint_rtl."
+	@echo "  make spyglass_prj        Write the SpyGlass project lint uses."
+	@echo "  make filelist            Regenerate filelist.f and rtl.f."
+	@echo "  make clean               Remove sim, waves, coverage, and SpyGlass output."
+	@echo "  make help                This list."
 	@echo ""
-	@echo "Available targets (default: make poly_mul_rand):"
-	@echo "  make all                   : Same as poly_mul_rand (compile + reference check)"
-	@echo "  make poly_mul              : tb_poly_mul stimulus only"
-	@echo "  make compile               : Compile with coverage"
-	@echo "  make run                   : Run simulation with coverage"
-	@echo "  make verdi                 : Open Verdi to view waveforms"
-	@echo "  make verdi_coverage        : Open Verdi with coverage data"
-	@echo "  make coverage_report       : Generate HTML coverage report"
-	@echo "  make coverage_summary      : Show coverage summary in terminal"
-	@echo "  make coverage_detail       : Show detailed coverage metrics"
-	@echo "  make merge_coverage        : Merge coverage from multiple tests"
-	@echo "  make run_test              : Run specific test (set CM_TESTNAME)"
-	@echo "  make debug                 : Compile with maximum debug options"
-	@echo "  make run_debug             : Run debug binary"
-	@echo "  make clean                 : Clean all generated files"
-	@echo "  make clean_coverage        : Clean only coverage data"
+	@echo "Scenarios (make test TEST=<name>)"
+	@echo "  random         Several random pairs. One back-to-back, then idle gaps."
+	@echo "  long_random    50 random pairs. Idle 0 to 3*256 clocks between them."
+	@echo "  both_zero      Zero times zero."
+	@echo "  one_zero       A zero operand on either side."
+	@echo "  unit           Multiply by the polynomial 1."
+	@echo "  all_qm1        Every coefficient is q-1."
+	@echo "  single_coeff   One hot coefficient, including a wrap through x^256 = -1."
+	@echo "  repeat_pair    The same pair twice."
+	@echo "  commute        x*y and then y*x."
+	@echo "  ready_tied     downstream_ready held high. NTT_ready must stay high."
+	@echo "  bp_random      downstream_ready falls and rises at random."
+	@echo "  stall_first    Stall the first output beat."
+	@echo "  stall_last     Stall the beat that finishes a polynomial."
+	@echo "  stall_long     Hold a beat for 64 cycles."
+	@echo "  gaps           Idle cycles only between polynomials."
+	@echo "  reset_idle     Check a polynomial, reset while idle, check the next one."
+	@echo "  reset_mid      Reset mid-polynomial, then a fresh pair."
+	@echo "  reset_stall    Reset while an output beat is held."
 	@echo ""
-	@echo "poly_mul aliases (same as default):"
-	@echo "  make poly_mul              : compile + run"
-	@echo "  make poly_mul_compile      : compile only"
-	@echo "  make poly_mul_run          : run only"
-	@echo "  make poly_mul_verdi        : open Verdi waveforms"
-	@echo "  make poly_mul_coverage_report"
-	@echo "  make poly_mul_debug"
+	@echo "Build options (read at compile time; recompile to change them)"
+	@echo "  NUM_POLY=2"
+	@echo "      Pairs in the random scenario. Raised to 3 if smaller, rejected above 64."
+	@echo "      Other scenarios ignore it. regression and regression_configs force 4."
+	@echo "      sanity and sanity_bp force 6."
+	@echo "  WAIT_MIN=0  WAIT_MAX=3"
+	@echo "      Idle clocks between polynomials in random. WAIT_MAX must be >= WAIT_MIN."
+	@echo "      Other scenarios ignore them. sanity and sanity_bp force 0 and 3."
+	@echo "  NUM_BUTFLY_PER_STAGE=1"
+	@echo "      Butterflies per NTT stage. Legal values: 1, 2, 4, 8."
+	@echo "      regression and regression_cov use the value you pass."
+	@echo "      regression_configs, sanity, and sanity_bp sweep 1, 2, 4, and 8."
+	@echo "  SKIP_Y_FWD_NTT=0"
+	@echo "      1: y is already in the NTT domain. The testbench aligns it."
+	@echo "      regression and regression_cov use the value you pass."
+	@echo "      regression_configs, sanity, and sanity_bp sweep 0 and 1."
+	@echo "  BP_ENABLE=0"
+	@echo "      1: random downstream_ready, unless the scenario sets its own stall"
+	@echo "      (stall_*, ready_tied, reset_*, bp_random)."
+	@echo "      regression, regression_cov, and regression_configs force 0."
+	@echo "      sanity forces 0. sanity_bp forces 1."
+	@echo "  BP_LOW_MAX=5  BP_GAP_MAX=20"
+	@echo "      Longest ready-low stretch and longest ready-high gap, in cycles."
+	@echo "      Compiled in only when BP_ENABLE=1. bp_random always stalls at"
+	@echo "      random, and uses 5 and 20 unless BP_ENABLE=1 is set too."
+	@echo "  FSDB_DUMP=1"
+	@echo "      1 writes waveform.fsdb. 0 skips it."
+	@echo "      regression, regression_cov, and regression_configs force 0."
+	@echo "  DEBUG_PROBE=0"
+	@echo "      1 on compile dumps ntt_debug_trace.txt. Then: make check_stages."
+	@echo "      Use NUM_POLY=1. Example: make compile run DEBUG_PROBE=1 NUM_POLY=1"
+	@echo "  TOP=tb_poly_mul"
+	@echo "      compile and run only. test and the regressions force tb_poly_mul_rand."
+	@echo "  CM_TESTNAME=test_default"
+	@echo "      Coverage test name (-cm_name at run). test sets it to TEST."
+	@echo "      regression names each scenario this way, so the report lists all of them."
+	@echo "  SPYGLASS_GOAL=lint/lint_rtl   SPYGLASS_TOP=poly_mul"
+	@echo "      lint only. spyglass_prj uses SPYGLASS_TOP."
 	@echo ""
-	@echo "poly_mul_rand (random stimulus + reference check):"
-	@echo "  make poly_mul_rand         : compile + run tb_poly_mul_rand"
-	@echo "  make poly_mul_rand_compile : compile only"
-	@echo "  make poly_mul_rand_run     : run only"
-	@echo "  make poly_mul_rand NUM_POLY=8 WAIT_MAX=5"
-	@echo "  make poly_mul_rand_verdi_rc  : open Verdi with debug wave groups"
+	@echo "Run option"
+	@echo "  TEST=random"
+	@echo "      Scenario for make test and make run. Ignored by regression."
+	@echo "      sanity and sanity_bp run this scenario at every config (default random)."
+	@echo "      regression_configs runs only random and bp_random."
 	@echo ""
-	@echo "sanity (poly_mul_rand + reference check, NUM_BUTFLY_PER_STAGE=1,2,4,8):"
-	@echo "  make sanity                : NUM_POLY=6; WAIT_MIN=0; WAIT_MAX=3"
-	@echo ""
-	@echo "forward_ntt testbench (legacy):"
-	@echo "  make fwd_ntt               : compile + run tb_fwd_ntt"
-	@echo "  make fwd_ntt_compile       : compile tb_fwd_ntt"
-	@echo "  make fwd_ntt_run           : run tb_fwd_ntt sim"
-	@echo "  make fwd_ntt_verdi         : open Verdi"
-	@echo "Usage examples:"
-	@echo "  make compile && make run && make verdi"
-	@echo "  make poly_mul NUM_POLY=8 WAIT_MAX=5"
-	@echo "  make fwd_ntt_compile && make fwd_ntt_run"
-	@echo "  make test_coverage_example : Run coverage example"
-	@echo "  make list                  : List source files"
-	@echo "  make env                   : Check environment setup"
-	@echo ""
-	@echo "Coverage files location: $(COV_DIR)"
-	@echo "HTML reports: $(COV_REPORT_DIR)/"
+	@echo "Examples"
+	@echo "  make test TEST=unit"
+	@echo "  make test TEST=random NUM_POLY=8 WAIT_MAX=5 NUM_BUTFLY_PER_STAGE=4"
+	@echo "  make test TEST=bp_random BP_ENABLE=1 BP_LOW_MAX=8 BP_GAP_MAX=12"
+	@echo "  make regression NUM_BUTFLY_PER_STAGE=4 SKIP_Y_FWD_NTT=1"
+	@echo "  make compile run && make verdi && make coverage_report"
 
-.PHONY: all poly_mul poly_mul_compile poly_mul_run poly_mul_verdi poly_mul_verdi_coverage \
-        poly_mul_coverage_report poly_mul_coverage_summary poly_mul_coverage_detail \
-        poly_mul_merge_coverage poly_mul_run_test poly_mul_debug poly_mul_run_debug \
-        poly_mul_clean poly_mul_clean_coverage \
-        poly_mul_rand poly_mul_rand_compile poly_mul_rand_run poly_mul_rand_verdi poly_mul_rand_verdi_rc \
-        sanity \
-        fwd_ntt fwd_ntt_compile fwd_ntt_run fwd_ntt_verdi fwd_ntt_verdi_coverage \
-        fwd_ntt_coverage_report fwd_ntt_debug fwd_ntt_run_debug \
-        compile run run_test coverage_report coverage_summary coverage_detail \
-        merge_coverage verdi verdi_coverage debug run_debug clean clean_coverage \
+.PHONY: sanity sanity_bp \
+        test regression regression_cov regression_configs \
+        compile run coverage_report verdi clean \
         filelist $(FILELIST) $(RTL_FILELIST) \
-        check_stages debug_probe \
-        spyglass_prj lint \
-        test_coverage_example list env urg_version help
+        check_stages \
+        spyglass_prj lint help

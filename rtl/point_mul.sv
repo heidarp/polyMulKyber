@@ -2,9 +2,9 @@
 
 import ntt_pkg::*;
 
-module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
+module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n, en);
 
-    input  clk, reset_n;
+    input  clk, reset_n, en;
     input  poly_type fwd_ntt_res_x;
     input  poly_type fwd_ntt_res_y;
     output poly_type point_mul_reseult;
@@ -28,7 +28,7 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                     R_pair_phase <= 1'b0;
                     R_pair_valid <= 1'b0;
                 end
-                else begin
+                else if (en) begin
                     if (point_mul_input_valid) begin
                         for (int i = 0; i < NUM_COEFS_PER_STAGE; i++) begin
                             fifo_x[i].coefs[0] <= fwd_ntt_res_x.coefs[i];
@@ -55,7 +55,7 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                 if (reset_n == 1'b0) begin
                     R_generate_new_w <= '0;
                 end
-                else begin
+                else if (en) begin
                     R_generate_new_w[0] <= point_mul_input_valid & ~R_pair_phase;
                     for (int i = 0; i < W_ADV_DEPTH-1; i++) begin
                         R_generate_new_w[i+1] <= R_generate_new_w[i];
@@ -70,7 +70,7 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                 .STAGE_INDEX(TOTAL_NUM_STAGES-1),
                 .FWD_INV(0),
                 .NUM_W_GENS(1)
-            ) u_w_gen(generated_w, R_generate_new_w[W_ADV_DEPTH-1], clk, reset_n);
+            ) u_w_gen(generated_w, R_generate_new_w[W_ADV_DEPTH-1], clk, reset_n, en);
 
             basemul_poly_type [NUM_COEFS_PER_STAGE-1:0] basemul_result;
             logic [NUM_COEFS_PER_STAGE-1:0][MODULUS_WIDTH-1:0] R_r1_hold;
@@ -84,7 +84,8 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                     basemul_result[gv_i],
                     clk,
                     reset_n,
-                    (gv_i % 2 == 1)
+                    (gv_i % 2 == 1),
+                    en
                 );
             end
 
@@ -104,7 +105,7 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                     R_r1_hold   <= '0;
                     R_ser_phase <= 1'b0;
                 end
-                else begin
+                else if (en) begin
                     if (base_multiplication_results_valid) begin
                         for (int i = 0; i < NUM_COEFS_PER_STAGE; i++) begin
                             R_r1_hold[i] <= basemul_result[i].coefs[1];
@@ -136,7 +137,7 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                     R_y          <= '0;
                     R_pair_valid <= 1'b0;
                 end
-                else begin
+                else if (en) begin
                     if (point_mul_input_valid) begin
                         for (int i = 0; i < NUM_COEFS_PER_STAGE; i++) begin
                             R_x[i] <= fwd_ntt_res_x.coefs[i];
@@ -155,7 +156,7 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                 if (reset_n == 1'b0) begin
                     R_generate_new_w <= '0;
                 end
-                else begin
+                else if (en) begin
                     R_generate_new_w[0] <= point_mul_input_valid;
                     for (int i = 0; i < W_ADV_DEPTH-1; i++) begin
                         R_generate_new_w[i+1] <= R_generate_new_w[i];
@@ -170,7 +171,7 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                 .STAGE_INDEX(TOTAL_NUM_STAGES-1),
                 .FWD_INV(0),
                 .NUM_W_GENS(NUM_BUTFLY_PER_STAGE/2)
-            ) u_w_gen(generated_w, R_generate_new_w[W_ADV_DEPTH-1], clk, reset_n);
+            ) u_w_gen(generated_w, R_generate_new_w[W_ADV_DEPTH-1], clk, reset_n, en);
 
             basemul_poly_type [NUM_BUTFLY_PER_STAGE-1:0] basemul_result;
 
@@ -192,7 +193,8 @@ module point_mul(fwd_ntt_res_x, fwd_ntt_res_y, point_mul_reseult, clk, reset_n);
                         basemul_result[2*gv_g + gv_s],
                         clk,
                         reset_n,
-                        (gv_s == 1)
+                        (gv_s == 1),
+                        en
                     );
 
                     assign point_mul_reseult.coefs[4*gv_g + gv_s]     = basemul_result[2*gv_g + gv_s].coefs[0];

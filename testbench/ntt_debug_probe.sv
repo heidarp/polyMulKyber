@@ -6,7 +6,7 @@
 //  so check_ntt_stages.py can compare each stage against a software Kyber
 //  model.  Nothing in the design depends on it.
 //
-//  Enable:   make poly_mul DEBUG_PROBE=1        (adds +define+NTT_DEBUG_PROBE)
+//  Enable:   make compile run DEBUG_PROBE=1 NUM_POLY=1   (+define+NTT_DEBUG_PROBE)
 //  Rename:   ./simv +ntt_trace=some_other_name.txt
 //
 //  To remove the whole debug facility, delete:

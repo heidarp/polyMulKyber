@@ -47,7 +47,7 @@ logic output_valid;
 integer addr_a=0;
 integer addr_b=POLYNOMIAL_LENGTH/2;
 
-forward_ntt u_forward_ntt (  x_in  , c_out ,   clk, reset_n);
+forward_ntt u_forward_ntt (  x_in  , c_out ,   clk, reset_n, 1'b1);
 
 integer wait_counter ;
 

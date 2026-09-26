@@ -11,11 +11,12 @@ module w_gen #(
     generated_w,
     input_valid,
     clk,
-    reset_n
+    reset_n,
+    en
 );
 
     output [NUM_BUTFLY_PER_STAGE-1:0] [MODULUS_WIDTH-1:0] generated_w;
-    input  clk, input_valid, reset_n;
+    input  clk, input_valid, reset_n, en;
 
     logic w_cnt_en;
     logic w_cnt_rst;
@@ -36,7 +37,7 @@ module w_gen #(
         if (reset_n == 1'b0) begin
             R_w_cnt <= '1 - NUM_W_GENS + 1;
         end
-        else begin
+        else if (en) begin
             if (w_cnt_rst == 1) begin
                 R_w_cnt <= 0;
             end

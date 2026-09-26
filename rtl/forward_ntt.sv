@@ -2,9 +2,9 @@
 
 import ntt_pkg::*;
 
-module forward_ntt(input_poly, output_poly, clk, reset_n);
+module forward_ntt(input_poly, output_poly, clk, reset_n, en);
 
-    input  clk, reset_n;
+    input  clk, reset_n, en;
     input  poly_type input_poly;
     output poly_type output_poly;
 
@@ -36,7 +36,8 @@ module forward_ntt(input_poly, output_poly, clk, reset_n);
                     fntt.stage[gv_i],
                     fntt.stage[gv_i+1],
                     clk,
-                    reset_n
+                    reset_n,
+                    en
                 );
             end
             else if (gv_i == TOTAL_NUM_STAGES-1) begin: last_ntt_stage
@@ -51,7 +52,8 @@ module forward_ntt(input_poly, output_poly, clk, reset_n);
                     fntt.stage[gv_i],
                     output_poly,
                     clk,
-                    reset_n
+                    reset_n,
+                    en
                 );
             end
             else begin: other_stages
@@ -66,7 +68,8 @@ module forward_ntt(input_poly, output_poly, clk, reset_n);
                     fntt.stage[gv_i],
                     fntt.stage[gv_i+1],
                     clk,
-                    reset_n
+                    reset_n,
+                    en
                 );
             end
         end

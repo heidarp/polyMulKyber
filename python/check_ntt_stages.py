@@ -591,7 +591,7 @@ def main(argv=None):
     if not os.path.exists(args.trace):
         print(f"\nTrace file {args.trace!r} not found.\n"
               f"Build and run with the probe enabled, e.g.:\n"
-              f"    make poly_mul DEBUG_PROBE=1\n", file=sys.stderr)
+              f"    make compile run DEBUG_PROBE=1 NUM_POLY=1\n", file=sys.stderr)
         return 2
 
     trace = Trace().load(args.trace)
@@ -606,13 +606,13 @@ def main(argv=None):
               "  1. Simulation ended at time 0 ($fatal) before reset was released\n"
               "     -> read simulation.log for [TB] Failed to open or Expected N decimal values\n"
               "  2. Ran from the wrong directory (mem_files/x.txt not found)\n"
-              "  3. Built without the probe: make poly_mul DEBUG_PROBE=1\n"
+              "  3. Built without the probe: make compile run DEBUG_PROBE=1 NUM_POLY=1\n"
               "  4. Stale empty trace from a failed run; re-run the simulation\n"
               "\n"
               "Look near the end of simulation.log for:\n"
               "  [ntt_debug_probe] beats captured ...\n"
               "Every tag should show 128 beats per polynomial (256 coeffs / 2 lanes).\n"
-              "Re-run: make clean && make poly_mul DEBUG_PROBE=1 NUM_POLY=1",
+              "Re-run: make clean && make compile run DEBUG_PROBE=1 NUM_POLY=1",
               file=sys.stderr)
         return 2
 

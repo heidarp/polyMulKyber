@@ -8,7 +8,8 @@ module barret_reduce_mod (
     input  logic                       clk,
     input  logic                       reset,
     input  logic [2*MODULUS_WIDTH-1:0] shifted_in,
-    output logic [MODULUS_WIDTH-1:0]   reduced
+    output logic [MODULUS_WIDTH-1:0]   reduced,
+    input  logic                       en
 );
 
     logic [2*MODULUS_WIDTH-1:0] tmp_a;
@@ -43,7 +44,7 @@ module barret_reduce_mod (
             R_shifted_in_low <= '0;
             R_reduced        <= '0;
         end
-        else begin
+        else if (en) begin
             R_tl             <= tmp_a[2*MODULUS_WIDTH-1:MODULUS_WIDTH];
             R_shifted_in_low <= shifted_in[MODULUS_WIDTH:0];
 
@@ -58,9 +59,9 @@ module barret_reduce_mod (
 
 endmodule
 
-module mod_mul(oprnd_x, oprnd_y, mul_reduced, input_valid, output_valid, clk, reset);
+module mod_mul(oprnd_x, oprnd_y, mul_reduced, input_valid, output_valid, clk, reset, en);
 
-    input  clk, reset, input_valid;
+    input  clk, reset, input_valid, en;
     output output_valid;
     input  [MODULUS_WIDTH-1:0] oprnd_x, oprnd_y;
     output wire [MODULUS_WIDTH-1:0] mul_reduced;
@@ -75,7 +76,7 @@ module mod_mul(oprnd_x, oprnd_y, mul_reduced, input_valid, output_valid, clk, re
         if (reset == 1'b0) begin
             R_out_valid_dly <= '0;
         end
-        else begin
+        else if (en) begin
             R_out_valid_dly[0] <= input_valid;
             for (int i = 0; i < (MUL_PIPE_DEPTH-1); i++) begin
                 R_out_valid_dly[i+1] <= R_out_valid_dly[i];
@@ -89,7 +90,7 @@ module mod_mul(oprnd_x, oprnd_y, mul_reduced, input_valid, output_valid, clk, re
             R_oprnd_y      <= '0;
             R_mul_res_wide <= '0;
         end
-        else begin
+        else if (en) begin
             R_oprnd_x      <= oprnd_x;
             R_oprnd_y      <= oprnd_y;
             R_mul_res_wide <= R_oprnd_x * R_oprnd_y;
@@ -100,7 +101,8 @@ module mod_mul(oprnd_x, oprnd_y, mul_reduced, input_valid, output_valid, clk, re
         .clk        (clk),
         .reset      (reset),
         .shifted_in (R_mul_res_wide),
-        .reduced    (mul_reduced)
+        .reduced    (mul_reduced),
+        .en         (en)
     );
 
 endmodule

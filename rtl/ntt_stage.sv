@@ -13,12 +13,13 @@ module ntt_stage #(
     input_poly,
     ouput_poly,
     clk,
-    reset_n
+    reset_n,
+    en
 );
 
     input  poly_type input_poly;
     output wire poly_type ouput_poly;
-    input  clk, reset_n;
+    input  clk, reset_n, en;
 
     localparam VALID_DLY_DEPTH = DELAY_NUM_CLOCKS
         + ((FWD_INV == 1) ? GS_PIPELINED_MUL_RED_DELAY : PIPELINED_MUL_RED_DELAY);
@@ -96,7 +97,7 @@ module ntt_stage #(
                 .STAGE_INDEX(STAGE_INDEX),
                 .FWD_INV(0),
                 .NUM_W_GENS(NUM_W_GENS)
-            ) u_w_gen(generated_w, generate_new_w, clk, reset_n);
+            ) u_w_gen(generated_w, generate_new_w, clk, reset_n, en);
             assign generate_new_w = fifo_cnt_rst;
         end
         else begin: generate_w_advancing_every_second_fifo_window
@@ -105,7 +106,7 @@ module ntt_stage #(
                 .STAGE_INDEX(STAGE_INDEX),
                 .FWD_INV(1),
                 .NUM_W_GENS(NUM_W_GENS)
-            ) u_inv_w_gen(generated_w, generate_new_w, clk, reset_n);
+            ) u_inv_w_gen(generated_w, generate_new_w, clk, reset_n, en);
 
             logic w_window_end;
             assign w_window_end = (DELAY_NUM_CLOCKS == 1) ? input_poly.valid : fifo_cnt_rst;
@@ -116,7 +117,7 @@ module ntt_stage #(
                 if (reset_n == 1'b0) begin
                     R_w_adv_phase <= 1'b1;
                 end
-                else if (w_window_end) begin
+                else if (en && w_window_end) begin
                     R_w_adv_phase <= ~R_w_adv_phase;
                 end
             end
@@ -141,7 +142,8 @@ module ntt_stage #(
                 ouput_poly.coefs[gv_i+1],
                 generated_w[gv_i/2],
                 clk,
-                reset_n
+                reset_n,
+                en
             );
         end
     endgenerate
@@ -150,7 +152,7 @@ module ntt_stage #(
         if (reset_n == 1'b0) begin
             R_out_valid_dly <= '0;
         end
-        else begin
+        else if (en) begin
             R_out_valid_dly[0] <= input_poly.valid;
             for (int i = 0; i < (VALID_DLY_DEPTH-1); i++) begin
                 R_out_valid_dly[i+1] <= R_out_valid_dly[i];
@@ -174,7 +176,7 @@ module ntt_stage #(
             R_fifo_cnt <= '0;
             R_fifo_mux_sel <= '1;
         end
-        else begin
+        else if (en) begin
             if (fifo_cnt_rst == 1) begin
                 R_fifo_cnt <= '0;
             end
@@ -194,7 +196,7 @@ module ntt_stage #(
         if (reset_n == 1'b0) begin
             R_ripple_fifo <= '0;
         end
-        else begin
+        else if (en) begin
             for (int j = 0; j < NUM_COEFS_PER_STAGE; j = j+2) begin
                 R_ripple_fifo[j].in_fifo[0] <= seleced_input_for_fifo[j];
                 for (int i = 0; i < (DELAY_NUM_CLOCKS-1); i++) begin
