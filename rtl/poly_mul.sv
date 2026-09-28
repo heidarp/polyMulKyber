@@ -2,24 +2,24 @@
 
 import ntt_pkg::*;
 
-module poly_mul(input_poly_x, input_poly_y, output_poly, clk, reset_n, downstream_ready, NTT_ready);
+module poly_mul(input_poly_x, input_poly_y, output_poly, clk, reset_n, output_ready, input_ready);
 
     input  clk, reset_n;
     input  poly_type input_poly_x;
     input  poly_type input_poly_y;
     output poly_type output_poly;
-    input  downstream_ready;
-    output NTT_ready;
+    input  output_ready;
+    output input_ready;
 
     // Backpressure: when the output beat is valid but the consumer is not ready, freeze
     // every register in the pipeline so the held beat and all in-flight data are preserved.
-    // NTT_ready is the producer-facing ready; while it is low the inputs must be held.
+    // input_ready is the producer-facing ready; while it is low the inputs must be held.
     logic stall;
     logic pipe_en;
 
-    assign stall     = output_poly.valid & ~downstream_ready;
-    assign pipe_en   = ~stall;
-    assign NTT_ready = pipe_en;
+    assign stall       = output_poly.valid & ~output_ready;
+    assign pipe_en     = ~stall;
+    assign input_ready = pipe_en;
 
     poly_type fwd_ntt_res_x;
     poly_type fwd_ntt_res_y;

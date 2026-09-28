@@ -51,7 +51,7 @@ WAIT_MIN ?= 0
 WAIT_MAX ?= 3
 NUM_BUTFLY_PER_STAGE ?= 1
 SKIP_Y_FWD_NTT ?= 0
-# Downstream backpressure stimulus (BP_ENABLE=1 randomly deasserts downstream_ready)
+# Downstream backpressure stimulus (BP_ENABLE=1 randomly deasserts output_ready)
 BP_ENABLE ?= 0
 BP_LOW_MAX ?= 5
 BP_GAP_MAX ?= 20
@@ -439,7 +439,7 @@ help:
 	@echo "  make regression_cov      Every scenario, then $(COV_REPORT_DIR)/hierarchy.html. No Verdi."
 	@echo "  make regression_configs  random and bp_random at widths 1, 2, 4, 8 and both y paths."
 	@echo "  make sanity              TEST at widths 1, 2, 4, 8, with and without the y bypass."
-	@echo "  make sanity_bp           Same sweep with random downstream_ready."
+	@echo "  make sanity_bp           Same sweep with random output_ready."
 	@echo "  make compile             Elaborate TOP (default tb_poly_mul) with coverage."
 	@echo "  make run                 Run ./simv. Build options are already fixed by compile."
 	@echo "  make verdi               Open waveform.fsdb. Needs a run with FSDB_DUMP=1."
@@ -461,8 +461,8 @@ help:
 	@echo "  single_coeff   One hot coefficient, including a wrap through x^256 = -1."
 	@echo "  repeat_pair    The same pair twice."
 	@echo "  commute        x*y and then y*x."
-	@echo "  ready_tied     downstream_ready held high. NTT_ready must stay high."
-	@echo "  bp_random      downstream_ready falls and rises at random."
+	@echo "  ready_tied     output_ready held high. input_ready must stay high."
+	@echo "  bp_random      output_ready falls and rises at random."
 	@echo "  stall_first    Stall the first output beat."
 	@echo "  stall_last     Stall the beat that finishes a polynomial."
 	@echo "  stall_long     Hold a beat for 64 cycles."
@@ -488,7 +488,7 @@ help:
 	@echo "      regression and regression_cov use the value you pass."
 	@echo "      regression_configs, sanity, and sanity_bp sweep 0 and 1."
 	@echo "  BP_ENABLE=0"
-	@echo "      1: random downstream_ready, unless the scenario sets its own stall"
+	@echo "      1: random output_ready, unless the scenario sets its own stall"
 	@echo "      (stall_*, ready_tied, reset_*, bp_random)."
 	@echo "      regression, regression_cov, and regression_configs force 0."
 	@echo "      sanity forces 0. sanity_bp forces 1."

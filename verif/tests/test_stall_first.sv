@@ -1,5 +1,5 @@
 // Stall the first output beat for a few cycles, then accept it.
-// While it is stalled the beat must not change and NTT_ready must be low.
+// While it is stalled the beat must not change and input_ready must be low.
 // Run: make test TEST=stall_first
 
 task automatic run_test_stall_first();

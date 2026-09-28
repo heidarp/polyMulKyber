@@ -55,7 +55,7 @@ int input_beats_accepted;
 int hold_violations;
 int early_valid_count;
 int ready_tied_violations;
-int ntt_ready_stall_violations;
+int input_ready_stall_violations;
 int mid_poly_gap_count;
 int fail_count;
 
@@ -124,12 +124,12 @@ function automatic void collect_beat();
     end
 endfunction
 
-// downstream_ready changes on negedge so it is stable at the next posedge,
+// output_ready changes on negedge so it is stable at the next posedge,
 // which is when poly_mul samples it. A beat is scored only when the next
 // posedge will accept it (valid and ready, and we are not choosing to stall).
 always @(negedge clk) begin
     if (reset_n == 1'b0) begin
-        downstream_ready   = 1'b1;
+        output_ready   = 1'b1;
         stall_cnt          = 0;
         out_a              = 0;
         out_b              = POLYNOMIAL_LENGTH / 2;
@@ -139,34 +139,34 @@ always @(negedge clk) begin
     end else begin
         if (check_early_valid && c_out.valid && !first_input_done)
             early_valid_count++;
-        if (poly_active && ntt_ready && !x_in.valid)
+        if (poly_active && input_ready && !x_in.valid)
             mid_poly_gap_count++;
 
         if (stall_cnt > 0) begin
             stall_cnt--;
             if (stall_cnt == 0) begin
-                downstream_ready = 1'b1;
+                output_ready = 1'b1;
                 if (c_out.valid)
                     collect_beat();
             end else begin
-                downstream_ready = 1'b0;
+                output_ready = 1'b0;
             end
-        end else if (c_out.valid && downstream_ready && want_directed_stall()) begin
-            downstream_ready    = 1'b0;
+        end else if (c_out.valid && output_ready && want_directed_stall()) begin
+            output_ready    = 1'b0;
             stall_cnt           = stall_hold_cycles();
             directed_stall_done = 1'b1;
             directed_stall_seen = 1'b1;
             $display("[TB] stalling output beat for %0d cycles at %0t ns (mode %s)",
                      stall_hold_cycles(), $time, stall_mode.name());
         end else if (stall_mode == STALL_RANDOM && bp_low) begin
-            downstream_ready = 1'b0;
-        end else if (c_out.valid && !downstream_ready) begin
-            downstream_ready = 1'b1;
+            output_ready = 1'b0;
+        end else if (c_out.valid && !output_ready) begin
+            output_ready = 1'b1;
             collect_beat();
-        end else if (c_out.valid && downstream_ready) begin
+        end else if (c_out.valid && output_ready) begin
             collect_beat();
         end else begin
-            downstream_ready = 1'b1;
+            output_ready = 1'b1;
         end
 
         -> ev_ready_settled;
@@ -185,11 +185,11 @@ always @(posedge clk) begin
     end else begin
         if (hold_expected && c_out !== c_out_prev)
             hold_violations++;
-        if (check_ready_tied && !ntt_ready)
+        if (check_ready_tied && !input_ready)
             ready_tied_violations++;
-        if (c_out.valid && !downstream_ready && ntt_ready)
-            ntt_ready_stall_violations++;
-        hold_expected <= c_out.valid && !downstream_ready;
+        if (c_out.valid && !output_ready && input_ready)
+            input_ready_stall_violations++;
+        hold_expected <= c_out.valid && !output_ready;
         c_out_prev    <= c_out;
 
         if (stall_mode == STALL_RANDOM) begin
@@ -246,7 +246,7 @@ task automatic clear_counts();
     hold_violations              = 0;
     early_valid_count            = 0;
     ready_tied_violations        = 0;
-    ntt_ready_stall_violations   = 0;
+    input_ready_stall_violations   = 0;
     mid_poly_gap_count           = 0;
     fail_count                   = 0;
     check_early_valid            = 1'b0;
@@ -301,7 +301,7 @@ task automatic drive_polynomial(
             poly_active = 1'b0;
             return;
         end
-        if (ntt_ready) begin
+        if (input_ready) begin
             x_in.valid = 1'b1;
             y_in.valid = 1'b1;
             for (int i = 0; i < step; i++) begin
@@ -359,7 +359,7 @@ task automatic idle_cycles(input int n);
         end
         if (reset_n == 1'b0)
             return;
-        if (ntt_ready) begin
+        if (input_ready) begin
             x_in = '0;
             y_in = '0;
             got++;
@@ -450,15 +450,15 @@ task automatic finish_and_check(input int n);
 
     if (hold_violations != 0)
         fail_check($sformatf("%0d backpressure hold violation(s)", hold_violations));
-    if (ntt_ready_stall_violations != 0)
-        fail_check("NTT_ready stayed high while the output was stalled");
+    if (input_ready_stall_violations != 0)
+        fail_check("input_ready stayed high while the output was stalled");
     if (mid_poly_gap_count != 0)
         fail_check($sformatf("%0d idle cycle(s) inside a polynomial", mid_poly_gap_count));
     if (check_early_valid && early_valid_count != 0)
         fail_check($sformatf("output valid before the first polynomial was accepted (%0d cycles)",
                              early_valid_count));
     if (check_ready_tied && ready_tied_violations != 0)
-        fail_check("NTT_ready fell while downstream_ready was tied high");
+        fail_check("input_ready fell while output_ready was tied high");
 
     directed_required = (stall_mode == STALL_FIRST) ||
                         (stall_mode == STALL_LAST)  ||

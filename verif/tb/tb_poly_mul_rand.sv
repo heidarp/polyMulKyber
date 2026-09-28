@@ -20,8 +20,8 @@ module tb_poly_mul_rand;
     poly_type y_to_dut;
     poly_type c_out;
 
-    logic downstream_ready;
-    logic ntt_ready;
+    logic output_ready;
+    logic input_ready;
 
     typedef logic [POLYNOMIAL_LENGTH-1:0][MODULUS_WIDTH-1:0] polynomial_t;
 
@@ -30,9 +30,9 @@ module tb_poly_mul_rand;
 
 `ifdef SKIP_Y_FWD_NTT
     // y bypasses the DUT forward NTT. This copy gives y the same latency
-    // as x and stalls on the same NTT_ready, so the two streams stay aligned.
+    // as x and stalls on the same input_ready, so the two streams stay aligned.
     poly_type y_ntt_out;
-    forward_ntt u_tb_fwd_ntt_y(y_in, y_ntt_out, clk, reset_n, ntt_ready);
+    forward_ntt u_tb_fwd_ntt_y(y_in, y_ntt_out, clk, reset_n, input_ready);
     assign y_to_dut = y_ntt_out;
 `else
     assign y_to_dut = y_in;
@@ -44,8 +44,8 @@ module tb_poly_mul_rand;
         c_out,
         clk,
         reset_n,
-        downstream_ready,
-        ntt_ready
+        output_ready,
+        input_ready
     );
 
 `include "ref_model.svh"

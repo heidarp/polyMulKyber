@@ -30,7 +30,7 @@ initial begin
     reset_n            = 1'b0;
     x_in               = '0;
     y_in               = '0;
-    downstream_ready   = 1'b1;
+    output_ready   = 1'b1;
     stall_mode         = STALL_OFF;
     total_fails        = 0;
     total_phases       = 0;

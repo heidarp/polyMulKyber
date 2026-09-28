@@ -21,7 +21,7 @@ task automatic run_test_reset_stall();
         begin
             wait (directed_stall_seen == 1'b1);
             repeat (3) @(ev_ready_settled);
-            check_that(downstream_ready === 1'b0 && c_out.valid === 1'b1,
+            check_that(output_ready === 1'b0 && c_out.valid === 1'b1,
                        "reset_stall: reset did not land during a held beat");
             check_that(num_collected == 0,
                        "reset_stall: a full polynomial came out before reset");

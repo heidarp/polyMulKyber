@@ -1,5 +1,5 @@
-// downstream_ready stays high for the whole run.
-// NTT_ready must stay high as well: with nothing stalling the output,
+// output_ready stays high for the whole run.
+// input_ready must stay high as well: with nothing stalling the output,
 // the pipe must keep accepting inputs.
 // Run: make test TEST=ready_tied
 

@@ -1,4 +1,4 @@
-// downstream_ready falls and rises at random, including across valid
+// output_ready falls and rises at random, including across valid
 // output beats. A stalled beat must be held, and the product must still
 // match once the beats are accepted.
 // Run: make test TEST=bp_random

@@ -2,7 +2,7 @@
 
 DUT is [`rtl/poly_mul.sv`](../../rtl/poly_mul.sv): streamed multiplication in \(Z_{3329}[x]/(x^{256}+1)\).
 
-Each beat carries `2 * NUM_BUTFLY_PER_STAGE` coefficients, taken as pairs from the low and high halves of the polynomial. Seven NTT stages feed a degree-1 basemul, then inverse NTT and a scale by 3303. `downstream_ready` low freezes the pipe. `NTT_ready` tells the producer to hold its inputs.
+Each beat carries `2 * NUM_BUTFLY_PER_STAGE` coefficients, taken as pairs from the low and high halves of the polynomial. Seven NTT stages feed a degree-1 basemul, then inverse NTT and a scale by 3303. `output_ready` low freezes the pipe. `input_ready` tells the producer to hold its inputs.
 
 The scoreboard is the schoolbook product in [`verif/common/ref_model.svh`](../common/ref_model.svh), reduced mod \(x^{256}+1\) and mod 3329. Coefficients are compared in order. The driver and the collector use the same lane map: `coefs[2*i]` is the low half, `coefs[2*i+1]` is the high half.
 
@@ -27,7 +27,7 @@ The scoreboard is the schoolbook product in [`verif/common/ref_model.svh`](../co
 | `single_coeff` | `test_single_coeff.sv` | One hot coefficient, including a wrap through x^256 = -1 |
 | `repeat_pair` | `test_repeat_pair.sv` | The same pair twice |
 | `commute` | `test_commute.sv` | x\*y and y\*x |
-| `ready_tied` | `test_ready_tied.sv` | `downstream_ready` held high; `NTT_ready` stays high |
+| `ready_tied` | `test_ready_tied.sv` | `output_ready` held high; `input_ready` stays high |
 | `bp_random` | `test_bp_random.sv` | Random ready |
 | `stall_first` | `test_stall_first.sv` | Stall the first output beat |
 | `stall_last` | `test_stall_last.sv` | Stall the beat that finishes a polynomial |
@@ -37,7 +37,7 @@ The scoreboard is the schoolbook product in [`verif/common/ref_model.svh`](../co
 | `reset_mid` | `test_reset_mid.sv` | Reset mid-polynomial, then a fresh pair |
 | `reset_stall` | `test_reset_stall.sv` | Reset while an output beat is held |
 
-A test passes when every coefficient matches in order, the output count matches, a stalled beat does not change, and `NTT_ready` is low while that beat is stalled.
+A test passes when every coefficient matches in order, the output count matches, a stalled beat does not change, and `input_ready` is low while that beat is stalled.
 
 ## Pass and fail reporting
 
